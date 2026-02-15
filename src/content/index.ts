@@ -70,6 +70,7 @@ const applyOverlayState = async (enabled: boolean) => {
 let lastActiveKey = "";
 let lastContainer: Element | null = null;
 let debounceTimer: number | undefined;
+let lastRequestId = "";
 
 const serializeCandidate = (candidate: ReturnType<typeof detectActiveTitleContext>[\"candidate\"]): string => {
   if (!candidate) return "";
@@ -102,6 +103,7 @@ const emitActiveTitleChange = () => {
   });
 
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  lastRequestId = requestId;
   const message: ResolveTitleMessage = {
     type: "RESOLVE_TITLE",
     requestId,
@@ -117,7 +119,14 @@ const emitActiveTitleChange = () => {
     .sendMessage(message)
     .then((response: TitleResolvedMessage) => {
       if (response?.type !== "TITLE_RESOLVED") return;
+      if (response.requestId !== lastRequestId) return;
       log("Title resolved", { requestId, response });
+
+      updateOverlay(container, {
+        titleLine,
+        communityRating: response.payload.tmdbVoteAverage,
+        ratingCount: response.payload.tmdbVoteCount
+      });
     })
     .catch((err) => {
       log("Title resolve failed", { requestId, err });

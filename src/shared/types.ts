@@ -35,6 +35,11 @@ export type TitleResolvedMessage = {
   requestId: string;
   payload: {
     title: string;
+    tmdbId?: number;
+    tmdbVoteAverage?: number;
+    tmdbVoteCount?: number;
+    posterPath?: string;
+    releaseYear?: number;
   };
 };
 

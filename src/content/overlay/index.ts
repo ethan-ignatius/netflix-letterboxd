@@ -1,5 +1,7 @@
 export interface OverlayData {
   titleLine: string;
+  communityRating?: number;
+  ratingCount?: number;
 }
 
 const OVERLAY_ID = "nxlb-overlay-panel";
@@ -90,10 +92,12 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
 
   const communityRating = document.createElement("div");
   communityRating.className = "meta";
+  communityRating.dataset.field = "communityRating";
   communityRating.textContent = "Community rating: —";
 
   const ratingCount = document.createElement("div");
   ratingCount.className = "meta";
+  ratingCount.dataset.field = "ratingCount";
   ratingCount.textContent = "Rating count: —";
 
   const match = document.createElement("div");
@@ -149,7 +153,21 @@ export const updateOverlay = (container: Element | null, data: OverlayData | nul
   }
 
   const titleEl = currentHost?.shadowRoot?.querySelector(".title");
-  if (titleEl) {
-    titleEl.textContent = data.titleLine;
+  if (titleEl) titleEl.textContent = data.titleLine;
+
+  const communityEl = currentHost?.shadowRoot?.querySelector(
+    "[data-field='communityRating']"
+  ) as HTMLDivElement | null;
+  if (communityEl) {
+    communityEl.textContent =
+      data.communityRating !== undefined ? `Community rating: ${data.communityRating}` : "Community rating: —";
+  }
+
+  const ratingEl = currentHost?.shadowRoot?.querySelector(
+    "[data-field='ratingCount']"
+  ) as HTMLDivElement | null;
+  if (ratingEl) {
+    ratingEl.textContent =
+      data.ratingCount !== undefined ? `Rating count: ${data.ratingCount}` : "Rating count: —";
   }
 };
