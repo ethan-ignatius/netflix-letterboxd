@@ -96,7 +96,10 @@ const findExpandedContainers = (): Element[] => {
   return visible.length > 0 ? visible : nodes;
 };
 
-export const detectActiveTitle = (): ActiveTitleCandidate | null => {
+export const detectActiveTitleContext = (): {
+  candidate: ActiveTitleCandidate | null;
+  container: Element | null;
+} => {
   const containers = findExpandedContainers();
 
   for (const container of containers) {
@@ -106,9 +109,12 @@ export const detectActiveTitle = (): ActiveTitleCandidate | null => {
       if (candidate.netflixTitleId || candidate.titleText) {
         const titleText = candidate.titleText ?? extractTitleTextNear(container);
         return {
+          candidate: {
           ...candidate,
           titleText,
           year: parseYearFromText(titleText)
+          },
+          container
         };
       }
     }
@@ -116,9 +122,12 @@ export const detectActiveTitle = (): ActiveTitleCandidate | null => {
     const titleText = extractTitleTextNear(container);
     if (titleText) {
       return {
-        titleText,
-        year: parseYearFromText(titleText),
-        source: "container-text"
+        candidate: {
+          titleText,
+          year: parseYearFromText(titleText),
+          source: "container-text"
+        },
+        container
       };
     }
   }
@@ -129,10 +138,17 @@ export const detectActiveTitle = (): ActiveTitleCandidate | null => {
   if (fallbackAnchor) {
     const candidate = extractFromAnchor(fallbackAnchor, "page-anchor");
     return {
-      ...candidate,
-      year: parseYearFromText(candidate.titleText)
+      candidate: {
+        ...candidate,
+        year: parseYearFromText(candidate.titleText)
+      },
+      container: fallbackAnchor.closest(CONTAINER_SELECTORS.join(",")) ?? fallbackAnchor.parentElement
     };
   }
 
-  return null;
+  return { candidate: null, container: null };
+};
+
+export const detectActiveTitle = (): ActiveTitleCandidate | null => {
+  return detectActiveTitleContext().candidate;
 };
