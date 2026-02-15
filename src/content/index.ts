@@ -1,8 +1,9 @@
 import { log } from "../shared/log";
 import { getStorage, setStorage } from "../shared/storage";
-import { detectActiveTitleContext } from "./netflixSelectors";
+import { detectActiveTitleContext, findOverlayAnchor } from "./netflixSelectors";
 import { updateOverlay } from "./overlay";
 import type { ResolveTitleMessage, TitleResolvedMessage } from "../shared/types";
+import { DEBUG } from "../shared/log";
 
 const BADGE_ID = "nxlb-debug-badge";
 const TOGGLE_COMBO = {
@@ -86,9 +87,14 @@ const emitActiveTitleChange = () => {
   if (!overlayEnabled) return;
 
   const { candidate, container } = detectActiveTitleContext();
+  const anchor = findOverlayAnchor(container);
   const key = serializeCandidate(candidate);
   if (!candidate) {
-    updateOverlay(null, null);
+    try {
+      updateOverlay(null, null);
+    } catch (error) {
+      log("Overlay cleanup failed", { error });
+    }
     lastActiveKey = "";
     lastContainer = null;
     return;
@@ -122,15 +128,30 @@ const emitActiveTitleChange = () => {
       if (response.requestId !== lastRequestId) return;
       log("Title resolved", { requestId, response });
 
-      updateOverlay(container, {
-        titleLine,
-        communityRating: response.payload.tmdbVoteAverage,
-        ratingCount: response.payload.tmdbVoteCount,
-        inWatchlist: response.payload.inWatchlist,
-        userRating: response.payload.userRating,
-        matchScore: response.payload.matchScore,
-        matchExplanation: response.payload.matchExplanation
-      });
+      try {
+        updateOverlay(
+          container,
+          {
+          titleLine,
+          communityRating: response.payload.tmdbVoteAverage,
+          ratingCount: response.payload.tmdbVoteCount,
+          inWatchlist: response.payload.inWatchlist,
+          userRating: response.payload.userRating,
+          matchScore: response.payload.matchScore,
+          matchExplanation: response.payload.matchExplanation,
+          debug: DEBUG
+            ? {
+                ...candidate,
+                ...response.payload
+              }
+            : undefined
+        },
+          anchor,
+          !container
+        );
+      } catch (error) {
+        log("Overlay update failed", { error });
+      }
     })
     .catch((err) => {
       log("Title resolve failed", { requestId, err });
@@ -142,7 +163,19 @@ const emitActiveTitleChange = () => {
       : candidate.titleText
     : "Unknown title";
 
-  updateOverlay(container, { titleLine });
+  try {
+    updateOverlay(
+      container,
+      {
+        titleLine,
+        debug: DEBUG ? { ...candidate } : undefined
+      },
+      anchor,
+      !container
+    );
+  } catch (error) {
+    log("Overlay update failed", { error });
+  }
 };
 
 const scheduleActiveTitleCheck = () => {
@@ -153,7 +186,13 @@ const scheduleActiveTitleCheck = () => {
 };
 
 const observeTitleChanges = () => {
-  const observer = new MutationObserver(() => scheduleActiveTitleCheck());
+  const observer = new MutationObserver(() => {
+    try {
+      scheduleActiveTitleCheck();
+    } catch (error) {
+      log("Mutation observer failed", { error });
+    }
+  });
   observer.observe(document.body, {
     childList: true,
     subtree: true,
@@ -161,8 +200,20 @@ const observeTitleChanges = () => {
     attributeFilter: ["class", "style", "aria-expanded", "aria-hidden"]
   });
 
-  document.addEventListener("pointerover", scheduleActiveTitleCheck, true);
-  document.addEventListener("focusin", scheduleActiveTitleCheck, true);
+  document.addEventListener("pointerover", () => {
+    try {
+      scheduleActiveTitleCheck();
+    } catch (error) {
+      log("Pointer observer failed", { error });
+    }
+  }, true);
+  document.addEventListener("focusin", () => {
+    try {
+      scheduleActiveTitleCheck();
+    } catch (error) {
+      log("Focus observer failed", { error });
+    }
+  }, true);
   scheduleActiveTitleCheck();
 };
 

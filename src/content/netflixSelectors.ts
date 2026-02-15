@@ -82,6 +82,27 @@ const extractTitleTextNear = (container: Element): string | undefined => {
   return undefined;
 };
 
+export const findOverlayAnchor = (container?: Element | null): Element | null => {
+  if (container) {
+    const anchor = findBestAnchorIn(container);
+    if (anchor && isVisible(anchor)) return anchor;
+    for (const selector of TITLE_TEXT_SELECTORS) {
+      const el = container.querySelector(selector);
+      if (el && isVisible(el)) return el;
+    }
+  }
+
+  const pageAnchor = Array.from(
+    document.querySelectorAll<HTMLAnchorElement>(TITLE_ANCHOR_SELECTOR)
+  ).find(isVisible);
+  if (pageAnchor) return pageAnchor;
+
+  const pageTitle = Array.from(document.querySelectorAll(TITLE_TEXT_SELECTORS.join(","))).find(
+    isVisible
+  );
+  return pageTitle ?? null;
+};
+
 const findBestAnchorIn = (container: Element): HTMLAnchorElement | undefined => {
   const anchors = Array.from(container.querySelectorAll<HTMLAnchorElement>(TITLE_ANCHOR_SELECTOR));
   const visible = anchors.filter(isVisible);

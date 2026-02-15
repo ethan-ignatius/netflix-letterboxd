@@ -6,9 +6,23 @@ export interface OverlayData {
   userRating?: number;
   matchScore?: number;
   matchExplanation?: string;
+  debug?: {
+    titleText?: string;
+    year?: number;
+    netflixTitleId?: string;
+    href?: string;
+    tmdbId?: number;
+    tmdbVoteAverage?: number;
+    tmdbVoteCount?: number;
+    inWatchlist?: boolean;
+    userRating?: number;
+    matchScore?: number;
+    matchExplanation?: string;
+  };
 }
 
 const OVERLAY_ID = "nxlb-overlay-panel";
+const SAFE_OFFSET = { x: 16, y: 12 };
 const positionOverrides = new WeakMap<Element, string>();
 
 const ensureContainerPosition = (container: Element) => {
@@ -85,6 +99,15 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.12);
     }
+    .debug {
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 11px;
+      opacity: 0.7;
+      display: none;
+      white-space: pre-wrap;
+    }
   `;
 
   const panel = document.createElement("div");
@@ -131,6 +154,11 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
   panel.appendChild(match);
   panel.appendChild(badges);
 
+  const debug = document.createElement("div");
+  debug.className = "debug";
+  debug.dataset.field = "debug";
+  panel.appendChild(debug);
+
   shadow.appendChild(style);
   shadow.appendChild(panel);
 
@@ -139,6 +167,16 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
 
 let currentContainer: Element | null = null;
 let currentHost: HTMLDivElement | null = null;
+let currentAnchor: Element | null = null;
+
+const applySafePosition = (host: HTMLDivElement, anchor: Element | null) => {
+  if (!anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  host.style.position = "fixed";
+  host.style.top = `${Math.max(8, rect.top + SAFE_OFFSET.y)}px`;
+  host.style.left = `${Math.max(8, rect.right + SAFE_OFFSET.x)}px`;
+  host.style.right = "auto";
+};
 
 const applyOverlayData = (data: OverlayData) => {
   const titleEl = currentHost?.shadowRoot?.querySelector(".title");
@@ -190,24 +228,52 @@ const applyOverlayData = (data: OverlayData) => {
       matchEl.textContent = "Your match: —";
     }
   }
+
+  const debugEl = currentHost?.shadowRoot?.querySelector(
+    "[data-field='debug']"
+  ) as HTMLDivElement | null;
+  if (debugEl) {
+    if (data.debug) {
+      debugEl.style.display = "block";
+      debugEl.textContent = JSON.stringify(data.debug, null, 2);
+    } else {
+      debugEl.style.display = "none";
+      debugEl.textContent = "";
+    }
+  }
 };
 
-export const updateOverlay = (container: Element | null, data: OverlayData | null) => {
-  if (!container || !data) {
+export const updateOverlay = (
+  container: Element | null,
+  data: OverlayData | null,
+  anchor: Element | null = null,
+  safeMode = false
+) => {
+  if (!data || (!container && !anchor)) {
     if (currentHost) currentHost.remove();
     restoreContainerPosition(currentContainer);
     currentContainer = null;
     currentHost = null;
+    currentAnchor = null;
     return;
   }
 
-  if (currentContainer !== container) {
+  if (currentContainer !== container || currentAnchor !== anchor) {
     if (currentHost) currentHost.remove();
     restoreContainerPosition(currentContainer);
     currentContainer = container;
+    currentAnchor = anchor;
     currentHost = buildOverlay(data);
-    ensureContainerPosition(container);
-    container.appendChild(currentHost);
+
+    if (container) {
+      ensureContainerPosition(container);
+      container.appendChild(currentHost);
+      if (safeMode) applySafePosition(currentHost, anchor ?? container);
+    } else if (anchor) {
+      document.documentElement.appendChild(currentHost);
+      applySafePosition(currentHost, anchor);
+    }
+
     applyOverlayData(data);
     return;
   }
