@@ -9,6 +9,9 @@
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
   "devDependencies": {
     "@types/chrome": "^0.0.268",
     "@types/node": "^20.14.9",

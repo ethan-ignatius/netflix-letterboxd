@@ -3,7 +3,22 @@ export type StorageKeys =
   | "lastImportAt"
   | "overlayEnabled"
   | "tmdbApiKey"
-  | "tmdbCache";
+  | "tmdbCache"
+  | "letterboxdIndex"
+  | "letterboxdStats";
+
+export type LetterboxdIndexEntry = {
+  r?: number;
+  w?: 1;
+};
+
+export type LetterboxdIndex = Record<string, LetterboxdIndexEntry>;
+
+export type LetterboxdStats = {
+  importedAt: string;
+  ratingsCount: number;
+  watchlistCount: number;
+};
 
 export interface LetterboxdExportMeta {
   importedAt: string;

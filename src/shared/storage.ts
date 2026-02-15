@@ -1,5 +1,5 @@
 import { log, warn } from "./log";
-import type { LetterboxdExport } from "./types";
+import type { LetterboxdExport, LetterboxdIndex, LetterboxdStats } from "./types";
 
 export interface StorageState {
   letterboxdExport?: LetterboxdExport;
@@ -7,6 +7,8 @@ export interface StorageState {
   overlayEnabled?: boolean;
   tmdbApiKey?: string;
   tmdbCache?: Record<string, unknown>;
+  letterboxdIndex?: LetterboxdIndex;
+  letterboxdStats?: LetterboxdStats;
 }
 
 export const getStorage = async (): Promise<StorageState> => {
@@ -16,7 +18,9 @@ export const getStorage = async (): Promise<StorageState> => {
     "lastImportAt",
     "overlayEnabled",
     "tmdbApiKey",
-    "tmdbCache"
+    "tmdbCache",
+    "letterboxdIndex",
+    "letterboxdStats"
   ]) as Promise<StorageState>;
 };
 
