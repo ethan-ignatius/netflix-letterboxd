@@ -1,34 +1,46 @@
-(function(){"use strict";const E=(...t)=>{},P=async()=>chrome.storage.local.get(["letterboxdExport","lastImportAt","overlayEnabled","tmdbApiKey","tmdbCache","letterboxdIndex","letterboxdStats"]),W=async t=>{await chrome.storage.local.set(t)},T="a[href^='/title/']",$=["[role='dialog']","[aria-modal='true']","[aria-expanded='true']","[data-uia*='preview']","[data-uia*='billboard']","[data-uia*='hero']","[data-uia*='details']"],S=["h1","h2","h3","[data-uia*='title']","[class*='title']","[class*='fallback']","[class*='preview'] [class*='header']"],J=["video","img","[data-uia*='preview'] video","[data-uia*='preview'] img","[class*='preview'] video","[class*='preview'] img","[data-uia*='player'] video","[data-uia*='hero'] img"],X=["[data-uia*='maturity-rating']","[data-uia*='season']","[data-uia*='resolution']","[data-uia*='hd']","[class*='maturity']","[class*='season']","[class*='quality']"],Q=["[data-uia*='genre']","a[href*='/genre/']","[class*='genre']"],u=t=>{const e=t.getBoundingClientRect();if(e.width===0||e.height===0)return!1;const n=window.getComputedStyle(t);return n.visibility==="hidden"||n.display==="none"||n.opacity==="0"?!1:e.bottom>=0&&e.right>=0&&e.top<=window.innerHeight&&e.left<=window.innerWidth},L=t=>{if(!t)return;const e=t.replace(/\s+/g," ").trim();return e.length?e:void 0},_=(t,e)=>{const n=[];return e.forEach(o=>{t.querySelectorAll(o).forEach(a=>{if(!u(a))return;const r=L(a.textContent);r&&n.push(r)})}),n},Z=t=>{const e=t.toLowerCase();return e.includes("episode")||e.includes("min")?!1:(e.includes("season")||e.includes("hd")||e.includes("tv-"),!0)},tt=t=>{if(!t)return;const e=t.match(/\/title\/(\d+)/);return e==null?void 0:e[1]},A=t=>{if(!t)return;const e=t.match(/(19\d{2}|20\d{2})/);if(!e)return;const n=Number(e[1]);if(!Number.isNaN(n))return n},B=(t,e)=>{const n=t.getAttribute("href")||void 0,o=tt(n),a=L(t.getAttribute("aria-label")||t.textContent);return{netflixTitleId:o,titleText:a,href:n,source:e}},D=t=>{for(const e of S){const n=t.querySelector(e);if(n&&u(n)){const o=L(n.textContent);if(o)return o}}},et=t=>{if(t){const o=z(t);if(o&&u(o))return o;for(const a of S){const r=t.querySelector(a);if(r&&u(r))return r}}const e=Array.from(document.querySelectorAll(T)).find(u);return e||(Array.from(document.querySelectorAll(S.join(","))).find(u)??null)},nt=t=>{if(!t)return null;for(const e of J){const n=t.querySelector(e);if(n&&u(n))return n}return null},at=t=>{if(!t)return;const e=_(t,X).map(o=>o.replace(/\s+/g," ").trim()).filter(o=>o.length>0).filter(Z),n=Array.from(new Set(e));if(n.length)return n.slice(0,3).join(" • ")},ot=t=>{if(!t)return;const e=_(t,Q).map(o=>o.replace(/\s+/g," ").trim()).filter(o=>o.length>0).filter(o=>!/episode|min/i.test(o)),n=Array.from(new Set(e));if(n.length)return n.slice(0,3).join(" • ")},z=t=>{const e=Array.from(t.querySelectorAll(T)),n=e.filter(u);return n.length>0?n[0]:e[0]},it=()=>{const t=$.join(","),e=Array.from(document.querySelectorAll(t)),n=e.filter(u);return n.length>0?n:e},rt=()=>{const t=it();for(const n of t){const o=z(n);if(o){const r=B(o,"container-anchor");if(r.netflixTitleId||r.titleText){const s=r.titleText??D(n);return{candidate:{...r,titleText:s,year:A(s)},container:n}}}const a=D(n);if(a)return{candidate:{titleText:a,year:A(a),source:"container-text"},container:n}}const e=Array.from(document.querySelectorAll(T)).find(u);if(e){const n=B(e,"page-anchor");return{candidate:{...n,year:A(n.titleText)},container:e.closest($.join(","))??e.parentElement}}return{candidate:null,container:null}},lt="nxlb-overlay-panel",st={y:12},w=new WeakMap,ct=t=>{window.getComputedStyle(t).position==="static"&&(w.has(t)||w.set(t,t instanceof HTMLElement?t.style.position:""),t instanceof HTMLElement&&(t.style.position="relative",t.dataset.nxlbPositioned="true"))},V=t=>{if(!t||!(t instanceof HTMLElement)||!t.dataset.nxlbPositioned)return;const e=w.get(t)??"";t.style.position=e,delete t.dataset.nxlbPositioned,w.delete(t)},dt=t=>{const e=document.createElement("div");e.id=lt,e.style.position="absolute",e.style.inset="0",e.style.zIndex="2147483647";const n=e.attachShadow({mode:"open"}),o=document.createElement("style");o.textContent=`
+(function(){"use strict";const E=(...e)=>{},B=async()=>chrome.storage.local.get(["letterboxdExport","lastImportAt","overlayEnabled","tmdbApiKey","tmdbCache","letterboxdIndex","letterboxdStats"]),Q=async e=>{await chrome.storage.local.set(e)},L="a[href^='/title/']",z=["[role='dialog']","[aria-modal='true']","[aria-expanded='true']","[data-uia*='preview']","[data-uia*='billboard']","[data-uia*='hero']","[data-uia*='details']"],A=["h1","h2","h3","[data-uia*='title']","[class*='title']","[class*='fallback']","[class*='preview'] [class*='header']"],Z=["video","img","[data-uia*='preview'] video","[data-uia*='preview'] img","[class*='preview'] video","[class*='preview'] img","[data-uia*='player'] video","[data-uia*='hero'] img"],ee=["[data-uia*='maturity-rating']","[data-uia*='season']","[data-uia*='resolution']","[data-uia*='hd']","[class*='maturity']","[class*='season']","[class*='quality']"],te=["[data-uia*='genre']","a[href*='/genre/']","[class*='genre']"],m=e=>{const t=e.getBoundingClientRect();if(t.width===0||t.height===0)return!1;const n=window.getComputedStyle(e);return n.visibility==="hidden"||n.display==="none"||n.opacity==="0"?!1:t.bottom>=0&&t.right>=0&&t.top<=window.innerHeight&&t.left<=window.innerWidth},k=e=>{if(!e)return;const t=e.replace(/\s+/g," ").trim();return t.length?t:void 0},D=(e,t)=>{const n=[];return t.forEach(o=>{e.querySelectorAll(o).forEach(i=>{if(!m(i))return;const l=k(i.textContent);l&&n.push(l)})}),n},ne=e=>{const t=e.toLowerCase();return t.includes("episode")||t.includes("min")?!1:(t.includes("season")||t.includes("hd")||t.includes("tv-"),!0)},oe=e=>{if(!e)return;const t=e.match(/\/title\/(\d+)/);return t==null?void 0:t[1]},R=e=>{if(!e)return;const t=e.match(/(19\d{2}|20\d{2})/);if(!t)return;const n=Number(t[1]);if(!Number.isNaN(n))return n},V=(e,t)=>{const n=e.getAttribute("href")||void 0,o=oe(n),i=k(e.getAttribute("aria-label")||e.textContent);return{netflixTitleId:o,titleText:i,href:n,source:t}},F=e=>{for(const t of A){const n=e.querySelector(t);if(n&&m(n)){const o=k(n.textContent);if(o)return o}}},ae=e=>{if(e){const o=G(e);if(o&&m(o))return o;for(const i of A){const l=e.querySelector(i);if(l&&m(l))return l}}const t=Array.from(document.querySelectorAll(L)).find(m);return t||(Array.from(document.querySelectorAll(A.join(","))).find(m)??null)},ie=e=>{if(!e)return null;for(const t of Z){const n=e.querySelector(t);if(n&&m(n))return n}return null},le=e=>{if(!e)return;const t=D(e,ee).map(o=>o.replace(/\s+/g," ").trim()).filter(o=>o.length>0).filter(ne).filter(o=>o.length<=24),n=Array.from(new Set(t));if(n.length)return n.slice(0,3).join(" • ")},re=e=>{if(!e)return;const t=D(e,te).map(o=>o.replace(/\s+/g," ").trim()).filter(o=>o.length>0).filter(o=>o.length<=24).filter(o=>!/episode|min/i.test(o)),n=Array.from(new Set(t));if(n.length)return n.slice(0,3).join(" • ")},G=e=>{const t=Array.from(e.querySelectorAll(L)),n=t.filter(m);return n.length>0?n[0]:t[0]},se=()=>{const e=z.join(","),t=Array.from(document.querySelectorAll(e)),n=t.filter(m);return n.length>0?n:t},ce=()=>{const e=se();for(const n of e){const o=G(n);if(o){const l=V(o,"container-anchor");if(l.netflixTitleId||l.titleText){const p=l.titleText??F(n);return{candidate:{...l,titleText:p,year:R(p)},container:n}}}const i=F(n);if(i)return{candidate:{titleText:i,year:R(i),source:"container-text"},container:n}}const t=Array.from(document.querySelectorAll(L)).find(m);if(t){const n=V(t,"page-anchor");return{candidate:{...n,year:R(n.titleText)},container:t.closest(z.join(","))??t.parentElement}}return{candidate:null,container:null}},de="nxlb-overlay-panel",pe={y:12},w=new WeakMap,ue=e=>{window.getComputedStyle(e).position==="static"&&(w.has(e)||w.set(e,e instanceof HTMLElement?e.style.position:""),e instanceof HTMLElement&&(e.style.position="relative",e.dataset.nxlbPositioned="true"))},K=e=>{if(!e||!(e instanceof HTMLElement)||!e.dataset.nxlbPositioned)return;const t=w.get(e)??"";e.style.position=t,delete e.dataset.nxlbPositioned,w.delete(e)},me=e=>{const t=document.createElement("div");t.id=de,t.style.position="absolute",t.style.inset="0",t.style.zIndex="2147483647";const n=t.attachShadow({mode:"open"}),o=document.createElement("style");o.textContent=`
     :host {
       all: initial;
       font-family: "Netflix Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
       pointer-events: none;
-      --preview-top: 45%;
-      --preview-bottom: 70%;
-      --preview-height: 180px;
+      --preview-top-px: 240px;
+      --preview-bottom-px: 420px;
       --controls-height: 64px;
     }
     .nxl-card {
       position: absolute;
       inset: 0;
+      color: #f5f5f5;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+      overflow: hidden;
+      animation: nxlFadeIn 150ms ease-out;
+    }
+    .nxl-shade {
+      position: absolute;
+      left: 0;
+      right: 0;
+      background: rgba(0, 0, 0, 0.88);
+      backdrop-filter: blur(8px);
+    }
+    .nxl-shade.top {
+      top: 0;
+      height: var(--preview-top-px);
+    }
+    .nxl-shade.bottom {
+      top: var(--preview-bottom-px);
+      bottom: 0;
+    }
+    .nxl-content {
+      position: relative;
+      z-index: 1;
       display: grid;
       grid-template-rows: auto auto auto auto 1fr auto;
       gap: 12px;
       padding: 20px;
-      background: linear-gradient(
-        to bottom,
-        rgba(0, 0, 0, 0.88) 0%,
-        rgba(0, 0, 0, 0.88) var(--preview-top),
-        rgba(0, 0, 0, 0) var(--preview-top),
-        rgba(0, 0, 0, 0) var(--preview-bottom),
-        rgba(0, 0, 0, 0.88) var(--preview-bottom),
-        rgba(0, 0, 0, 0.88) 100%
-      );
-      backdrop-filter: blur(8px);
-      border-radius: 12px;
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      animation: nxlFadeIn 150ms ease-out;
+      height: 100%;
+      box-sizing: border-box;
     }
     .nxl-top {
       display: flex;
@@ -36,20 +48,36 @@
       align-items: flex-start;
       gap: 16px;
     }
+    .nxl-title-section {
+      max-width: 70%;
+    }
     .nxl-title {
       font-size: 30px;
       font-weight: 700;
       letter-spacing: 0.01em;
+      line-height: 1.1;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .nxl-meta {
       font-size: 14px;
       color: rgba(255, 255, 255, 0.75);
       margin-top: 6px;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .nxl-genres {
       font-size: 14px;
       color: rgba(255, 255, 255, 0.7);
       margin-top: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .nxl-branding {
       display: flex;
@@ -109,7 +137,7 @@
       font-size: 14px;
     }
     .nxl-preview {
-      min-height: var(--preview-height);
+      min-height: 180px;
     }
     .nxl-controls {
       min-height: var(--controls-height);
@@ -123,6 +151,9 @@
       display: none;
       white-space: pre-wrap;
     }
+    .safe .nxl-shade {
+      backdrop-filter: blur(4px);
+    }
     @keyframes nxlFadeIn {
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
@@ -131,7 +162,7 @@
       0% { transform: scale(0.96); }
       100% { transform: scale(1); }
     }
-  `;const a=document.createElement("div");a.className="nxl-card";const r=document.createElement("div");r.className="nxl-top";const s=document.createElement("div");s.className="nxl-title-section";const d=document.createElement("div");d.className="nxl-title",d.textContent=t.titleLine;const p=document.createElement("div");p.className="nxl-meta",p.dataset.field="metadata",p.textContent=t.metadataLine??"TV-14 • 2 Seasons • HD";const m=document.createElement("div");m.className="nxl-genres",m.dataset.field="genres",m.textContent=t.genresLine??"Genres",s.appendChild(d),s.appendChild(p),s.appendChild(m);const h=document.createElement("div");h.className="nxl-branding",h.innerHTML=`
+  `;const i=document.createElement("div");i.className="nxl-card";const l=document.createElement("div");l.className="nxl-shade top";const p=document.createElement("div");p.className="nxl-shade bottom";const s=document.createElement("div");s.className="nxl-content";const c=document.createElement("div");c.className="nxl-top";const d=document.createElement("div");d.className="nxl-title-section";const x=document.createElement("div");x.className="nxl-title",x.textContent=e.titleLine;const f=document.createElement("div");f.className="nxl-meta",f.dataset.field="metadata",f.textContent=e.metadataLine??"TV-14 • 2 Seasons • HD";const r=document.createElement("div");r.className="nxl-genres",r.dataset.field="genres",r.textContent=e.genresLine??"Genres",d.appendChild(x),d.appendChild(f),d.appendChild(r);const u=document.createElement("div");u.className="nxl-branding",u.innerHTML=`
     Powered by
     <span class="nxl-dots">
       <span class="nxl-dot green"></span>
@@ -139,11 +170,11 @@
       <span class="nxl-dot blue"></span>
     </span>
     Letterboxd
-  `,r.appendChild(s),r.appendChild(h);const g=document.createElement("div");g.className="nxl-divider";const l=document.createElement("div");l.className="nxl-metadata";const c=document.createElement("div");c.className="nxl-rating",c.dataset.field="communityRating",c.textContent="Community rating: —";const f=document.createElement("div");f.className="nxl-match",f.dataset.field="match",f.textContent="Your match: —";const x=document.createElement("div");x.className="nxl-because",x.dataset.field="because",x.textContent="Because you like —",l.appendChild(c),l.appendChild(f),l.appendChild(x);const v=document.createElement("div");v.className="nxl-preview",v.dataset.field="preview";const k=document.createElement("div");k.className="nxl-controls",k.dataset.field="controls",a.appendChild(r),a.appendChild(g),a.appendChild(l),a.appendChild(v),a.appendChild(k);const q=document.createElement("div");return q.className="debug",q.dataset.field="debug",a.appendChild(q),n.appendChild(o),n.appendChild(a),e};let y=null,i=null,M=null;const F=(t,e)=>{if(!e)return;const n=e.getBoundingClientRect();t.style.position="fixed",t.style.top=`${Math.max(8,n.top-st.y)}px`,t.style.left=`${Math.max(8,n.left)}px`,t.style.right="auto",t.style.width=`${Math.max(280,n.width)}px`,t.style.height=`${Math.max(220,n.height)}px`},ut=t=>t===void 0?"":t>=1e6?`${(t/1e6).toFixed(1)}M`:t>=1e3?`${(t/1e3).toFixed(1)}K`:`${t}`,G=t=>{var p,m,h,g,l,c,f;const e=(p=i==null?void 0:i.shadowRoot)==null?void 0:p.querySelector(".nxl-title");e&&(e.textContent=t.titleLine);const n=(m=i==null?void 0:i.shadowRoot)==null?void 0:m.querySelector("[data-field='communityRating']");if(n)if(t.communityRating!==void 0){const x=ut(t.ratingCount);n.innerHTML=`
+  `,c.appendChild(d),c.appendChild(u);const g=document.createElement("div");g.className="nxl-divider";const h=document.createElement("div");h.className="nxl-metadata";const y=document.createElement("div");y.className="nxl-rating",y.dataset.field="communityRating",y.textContent="Community rating: —";const T=document.createElement("div");T.className="nxl-match",T.dataset.field="match",T.textContent="Your match: —";const S=document.createElement("div");S.className="nxl-because",S.dataset.field="because",S.textContent="Because you like —",h.appendChild(y),h.appendChild(T),h.appendChild(S);const P=document.createElement("div");P.className="nxl-preview",P.dataset.field="preview";const $=document.createElement("div");$.className="nxl-controls",$.dataset.field="controls",s.appendChild(c),s.appendChild(g),s.appendChild(h),s.appendChild(P),s.appendChild($);const _=document.createElement("div");return _.className="debug",_.dataset.field="debug",s.appendChild(_),i.appendChild(l),i.appendChild(p),i.appendChild(s),n.appendChild(o),n.appendChild(i),t};let b=null,a=null,N=null;const j=(e,t)=>{if(!t)return;const n=t.getBoundingClientRect();e.style.position="fixed",e.style.top=`${Math.max(8,n.top-pe.y)}px`,e.style.left=`${Math.max(8,n.left)}px`,e.style.right="auto",e.style.width=`${Math.max(280,n.width)}px`,e.style.height=`${Math.max(220,n.height)}px`},xe=e=>e===void 0?"":e>=1e6?`${(e/1e6).toFixed(1)}M`:e>=1e3?`${(e/1e3).toFixed(1)}K`:`${e}`,Y=e=>{var c,d,x,f,r,u,g;const t=(c=a==null?void 0:a.shadowRoot)==null?void 0:c.querySelector(".nxl-title");t&&(t.textContent=e.titleLine);const n=(d=a==null?void 0:a.shadowRoot)==null?void 0:d.querySelector("[data-field='communityRating']");if(n)if(e.communityRating!==void 0){const h=xe(e.ratingCount);n.innerHTML=`
         Community rating:
         <span class="nxl-star">★</span>
-        ${t.communityRating.toFixed(1)}${x?` <span class="nxl-meta">${x} ratings</span>`:""}
-      `}else n.textContent="Community rating: —";const o=(h=i==null?void 0:i.shadowRoot)==null?void 0:h.querySelector("[data-field='match']");o&&(t.matchScore!==void 0?o.innerHTML=`Your match: <span class="nxl-match-value">${t.matchScore}%</span>`:o.textContent="Your match: —");const a=(g=i==null?void 0:i.shadowRoot)==null?void 0:g.querySelector("[data-field='because']");a&&(a.textContent=t.matchExplanation??"Because you like —");const r=(l=i==null?void 0:i.shadowRoot)==null?void 0:l.querySelector("[data-field='metadata']");r&&(r.textContent=t.metadataLine??"TV-14 • 2 Seasons • HD");const s=(c=i==null?void 0:i.shadowRoot)==null?void 0:c.querySelector("[data-field='genres']");s&&(s.textContent=t.genresLine??"Genres");const d=(f=i==null?void 0:i.shadowRoot)==null?void 0:f.querySelector("[data-field='debug']");d&&(t.debug?(d.style.display="block",d.textContent=JSON.stringify(t.debug,null,2)):(d.style.display="none",d.textContent=""))},C=(t,e,n=null,o=!1,a)=>{if(!e||!t&&!n){i&&i.remove(),V(y),y=null,i=null,M=null;return}if(y!==t||M!==n){if(i&&i.remove(),V(y),y=t,M=n,i=dt(e),t){if(ct(t),t.appendChild(i),a){const r=Math.max(0,Math.min(100,a.top/a.containerHeight*100)),s=Math.max(0,Math.min(100,a.bottom/a.containerHeight*100));i.style.setProperty("--preview-top",`${r}%`),i.style.setProperty("--preview-bottom",`${s}%`),i.style.setProperty("--preview-height",`${a.previewHeight}px`),i.style.setProperty("--controls-height",`${a.controlsHeight}px`)}o&&F(i,n??t)}else n&&(document.documentElement.appendChild(i),F(i,n));G(e);return}if(a){const r=Math.max(0,Math.min(100,a.top/a.containerHeight*100)),s=Math.max(0,Math.min(100,a.bottom/a.containerHeight*100));i.style.setProperty("--preview-top",`${r}%`),i.style.setProperty("--preview-bottom",`${s}%`),i.style.setProperty("--preview-height",`${a.previewHeight}px`),i.style.setProperty("--controls-height",`${a.controlsHeight}px`)}G(e)},H="nxlb-debug-badge",N={ctrlKey:!0,shiftKey:!0,key:"l"},pt=250,mt=t=>{const e=document.getElementById(H);if(!t){e==null||e.remove();return}if(e)return;const n=document.createElement("div");n.id=H,n.style.position="fixed",n.style.bottom="16px",n.style.right="16px",n.style.zIndex="2147483647";const o=n.attachShadow({mode:"open"}),a=document.createElement("style");a.textContent=`
+        ${e.communityRating.toFixed(1)}${h?` <span class="nxl-meta">${h} ratings</span>`:""}
+      `}else n.textContent="Community rating: —";const o=(x=a==null?void 0:a.shadowRoot)==null?void 0:x.querySelector("[data-field='match']");o&&(e.matchScore!==void 0?o.innerHTML=`Your match: <span class="nxl-match-value">${e.matchScore}%</span>`:o.textContent="Your match: —");const i=(f=a==null?void 0:a.shadowRoot)==null?void 0:f.querySelector("[data-field='because']");i&&(i.textContent=e.matchExplanation??"Because you like —");const l=(r=a==null?void 0:a.shadowRoot)==null?void 0:r.querySelector("[data-field='metadata']");l&&(l.textContent=e.metadataLine??"TV-14 • 2 Seasons • HD");const p=(u=a==null?void 0:a.shadowRoot)==null?void 0:u.querySelector("[data-field='genres']");p&&(p.textContent=e.genresLine??"Genres");const s=(g=a==null?void 0:a.shadowRoot)==null?void 0:g.querySelector("[data-field='debug']");s&&(e.debug?(s.style.display="block",s.textContent=JSON.stringify(e.debug,null,2)):(s.style.display="none",s.textContent=""))},C=(e,t,n=null,o=!1,i)=>{var p,s;if(!t||!e&&!n){a&&a.remove(),K(b),b=null,a=null,N=null;return}if(b!==e||N!==n){if(a&&a.remove(),K(b),b=e,N=n,a=me(t),e){if(ue(e),e.appendChild(a),i){const d=Math.max(120,i.top),x=Math.max(d+80,i.bottom);a.style.setProperty("--preview-top-px",`${d}px`),a.style.setProperty("--preview-bottom-px",`${x}px`),a.style.setProperty("--controls-height",`${i.controlsHeight}px`)}o&&j(a,n??e)}else n&&(document.documentElement.appendChild(a),j(a,n));const c=(p=a.shadowRoot)==null?void 0:p.querySelector(".nxl-card");c&&c.classList.toggle("safe",o),Y(t);return}if(i&&a){const c=Math.max(120,i.top),d=Math.max(c+80,i.bottom);a.style.setProperty("--preview-top-px",`${c}px`),a.style.setProperty("--preview-bottom-px",`${d}px`),a.style.setProperty("--controls-height",`${i.controlsHeight}px`)}const l=(s=a==null?void 0:a.shadowRoot)==null?void 0:s.querySelector(".nxl-card");l&&l.classList.toggle("safe",o),Y(t)},U="nxlb-debug-badge",I={ctrlKey:!0,shiftKey:!0,key:"l"},fe=250,he=e=>{const t=document.getElementById(U);if(!e){t==null||t.remove();return}if(t)return;const n=document.createElement("div");n.id=U,n.style.position="fixed",n.style.bottom="16px",n.style.right="16px",n.style.zIndex="2147483647";const o=n.attachShadow({mode:"open"}),i=document.createElement("style");i.textContent=`
     :host {
       all: initial;
       font-family: "Space Grotesk", sans-serif;
@@ -159,5 +190,5 @@
       border: 1px solid rgba(255, 255, 255, 0.14);
       box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
     }
-  `;const r=document.createElement("div");r.className="badge",r.textContent="N×L active",o.appendChild(a),o.appendChild(r),document.documentElement.appendChild(n)};let K=!0;const j=async t=>{K=t,t||C(null,null),mt(t)};let I="",O=null,R,Y="";const ft=t=>t?[t.netflixTitleId??"",t.titleText??"",t.year??"",t.href??""].join("|"):"",xt=()=>{if(!K)return;const{candidate:t,container:e}=rt(),n=et(e),o=nt(e),a=at(e),r=ot(e),s=(()=>{if(!e||!o)return;const l=e.getBoundingClientRect(),c=o.getBoundingClientRect();if(l.height===0)return;const f=Math.max(0,c.top-l.top),x=Math.max(0,c.bottom-l.top),v=Math.max(0,l.bottom-c.bottom);return{top:f,bottom:x,containerHeight:l.height,previewHeight:Math.max(0,c.height),controlsHeight:v}})(),d=!e||!o,p=ft(t);if(!t){try{C(null,null)}catch{}I="",O=null;return}if(p===I&&e===O)return;I=p,O=e,E("Active title changed",{...t,at:new Date().toISOString()});const m=`req_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;Y=m;const h={type:"RESOLVE_TITLE",requestId:m,payload:{netflixTitleId:t.netflixTitleId,titleText:t.titleText,year:t.year,href:t.href}};chrome.runtime.sendMessage(h).then(l=>{if((l==null?void 0:l.type)==="TITLE_RESOLVED"&&l.requestId===Y)try{C(e,{titleLine:g,metadataLine:a,genresLine:r,communityRating:l.payload.tmdbVoteAverage,ratingCount:l.payload.tmdbVoteCount,inWatchlist:l.payload.inWatchlist,userRating:l.payload.userRating,matchScore:l.payload.matchScore,matchExplanation:l.payload.matchExplanation,debug:void 0},n,d,s)}catch{}}).catch(l=>{});const g=t.titleText?t.year?`${t.titleText} (${t.year})`:t.titleText:"Unknown title";try{C(e,{titleLine:g,metadataLine:a,genresLine:r,debug:void 0},n,d,s)}catch{}},b=()=>{R&&window.clearTimeout(R),R=window.setTimeout(()=>{xt()},pt)},ht=()=>{new MutationObserver(()=>{try{b()}catch{}}).observe(document.body,{childList:!0,subtree:!0,attributes:!0,attributeFilter:["class","style","aria-expanded","aria-hidden"]}),document.addEventListener("pointerover",()=>{try{b()}catch{}},!0),document.addEventListener("focusin",()=>{try{b()}catch{}},!0),b()},gt=async()=>{const e=!((await P()).overlayEnabled??!0);await W({overlayEnabled:e}),await j(e),e&&b()},yt=t=>{t.ctrlKey===N.ctrlKey&&t.shiftKey===N.shiftKey&&t.key.toLowerCase()===N.key&&(t.preventDefault(),gt().catch(e=>E("Toggle failed",e)))},U=async()=>{const e=(await P()).overlayEnabled??!0;await j(e),ht(),window.addEventListener("keydown",yt)};document.readyState==="loading"?document.addEventListener("DOMContentLoaded",()=>{U().catch(t=>E("Init failed",t))},{once:!0}):U().catch(t=>E("Init failed",t))})();
+  `;const l=document.createElement("div");l.className="badge",l.textContent="N×L active",o.appendChild(i),o.appendChild(l),document.documentElement.appendChild(n)};let W=!0;const H=async e=>{W=e,e||C(null,null),he(e)};let M="",O=null,q,J="";const ge=e=>e?[e.netflixTitleId??"",e.titleText??"",e.year??"",e.href??""].join("|"):"",ye=()=>{if(!W)return;const{candidate:e,container:t}=ce(),n=ae(t),o=ie(t),i=le(t),l=re(t),p=(()=>{if(!t||!o)return;const r=t.getBoundingClientRect(),u=o.getBoundingClientRect();if(r.height===0)return;const g=Math.max(0,u.top-r.top),h=Math.max(0,u.bottom-r.top),y=Math.max(0,r.bottom-u.bottom);return{top:g,bottom:h,containerHeight:r.height,previewHeight:Math.max(0,u.height),controlsHeight:y}})(),s=!t||!o,c=ge(e);if(!e){try{C(null,null)}catch{}M="",O=null;return}if(c===M&&t===O)return;M=c,O=t,E("Active title changed",{...e,at:new Date().toISOString()});const d=`req_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;J=d;const x={type:"RESOLVE_TITLE",requestId:d,payload:{netflixTitleId:e.netflixTitleId,titleText:e.titleText,year:e.year,href:e.href}};chrome.runtime.sendMessage(x).then(r=>{if((r==null?void 0:r.type)==="TITLE_RESOLVED"&&r.requestId===J)try{C(t,{titleLine:f,metadataLine:i,genresLine:l,communityRating:r.payload.tmdbVoteAverage,ratingCount:r.payload.tmdbVoteCount,inWatchlist:r.payload.inWatchlist,userRating:r.payload.userRating,matchScore:r.payload.matchScore,matchExplanation:r.payload.matchExplanation,debug:void 0},n,s,p)}catch{}}).catch(r=>{});const f=e.titleText?e.year?`${e.titleText} (${e.year})`:e.titleText:"Unknown title";try{C(t,{titleLine:f,metadataLine:i,genresLine:l,debug:void 0},n,s,p)}catch{}},v=()=>{q&&window.clearTimeout(q),q=window.setTimeout(()=>{ye()},fe)},be=()=>{new MutationObserver(()=>{try{v()}catch{}}).observe(document.body,{childList:!0,subtree:!0,attributes:!0,attributeFilter:["class","style","aria-expanded","aria-hidden"]}),document.addEventListener("pointerover",()=>{try{v()}catch{}},!0),document.addEventListener("focusin",()=>{try{v()}catch{}},!0),v()},ve=async()=>{const t=!((await B()).overlayEnabled??!0);await Q({overlayEnabled:t}),await H(t),t&&v()},Ee=e=>{e.ctrlKey===I.ctrlKey&&e.shiftKey===I.shiftKey&&e.key.toLowerCase()===I.key&&(e.preventDefault(),ve().catch(t=>E("Toggle failed",t)))},X=async()=>{const t=(await B()).overlayEnabled??!0;await H(t),be(),window.addEventListener("keydown",Ee)};document.readyState==="loading"?document.addEventListener("DOMContentLoaded",()=>{X().catch(e=>E("Init failed",e))},{once:!0}):X().catch(e=>E("Init failed",e))})();
 //# sourceMappingURL=index.js.map

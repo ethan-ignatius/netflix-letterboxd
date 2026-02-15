@@ -65,32 +65,44 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       all: initial;
       font-family: "Netflix Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
       pointer-events: none;
-      --preview-top: 45%;
-      --preview-bottom: 70%;
-      --preview-height: 180px;
+      --preview-top-px: 240px;
+      --preview-bottom-px: 420px;
       --controls-height: 64px;
     }
     .nxl-card {
       position: absolute;
       inset: 0;
+      color: #f5f5f5;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+      overflow: hidden;
+      animation: nxlFadeIn 150ms ease-out;
+    }
+    .nxl-shade {
+      position: absolute;
+      left: 0;
+      right: 0;
+      background: rgba(0, 0, 0, 0.88);
+      backdrop-filter: blur(8px);
+    }
+    .nxl-shade.top {
+      top: 0;
+      height: var(--preview-top-px);
+    }
+    .nxl-shade.bottom {
+      top: var(--preview-bottom-px);
+      bottom: 0;
+    }
+    .nxl-content {
+      position: relative;
+      z-index: 1;
       display: grid;
       grid-template-rows: auto auto auto auto 1fr auto;
       gap: 12px;
       padding: 20px;
-      background: linear-gradient(
-        to bottom,
-        rgba(0, 0, 0, 0.88) 0%,
-        rgba(0, 0, 0, 0.88) var(--preview-top),
-        rgba(0, 0, 0, 0) var(--preview-top),
-        rgba(0, 0, 0, 0) var(--preview-bottom),
-        rgba(0, 0, 0, 0.88) var(--preview-bottom),
-        rgba(0, 0, 0, 0.88) 100%
-      );
-      backdrop-filter: blur(8px);
-      border-radius: 12px;
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      animation: nxlFadeIn 150ms ease-out;
+      height: 100%;
+      box-sizing: border-box;
     }
     .nxl-top {
       display: flex;
@@ -98,20 +110,36 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       align-items: flex-start;
       gap: 16px;
     }
+    .nxl-title-section {
+      max-width: 70%;
+    }
     .nxl-title {
       font-size: 30px;
       font-weight: 700;
       letter-spacing: 0.01em;
+      line-height: 1.1;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .nxl-meta {
       font-size: 14px;
       color: rgba(255, 255, 255, 0.75);
       margin-top: 6px;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .nxl-genres {
       font-size: 14px;
       color: rgba(255, 255, 255, 0.7);
       margin-top: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .nxl-branding {
       display: flex;
@@ -171,7 +199,7 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       font-size: 14px;
     }
     .nxl-preview {
-      min-height: var(--preview-height);
+      min-height: 180px;
     }
     .nxl-controls {
       min-height: var(--controls-height);
@@ -185,6 +213,9 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       display: none;
       white-space: pre-wrap;
     }
+    .safe .nxl-shade {
+      backdrop-filter: blur(4px);
+    }
     @keyframes nxlFadeIn {
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
@@ -197,6 +228,15 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
 
   const panel = document.createElement("div");
   panel.className = "nxl-card";
+
+  const shadeTop = document.createElement("div");
+  shadeTop.className = "nxl-shade top";
+
+  const shadeBottom = document.createElement("div");
+  shadeBottom.className = "nxl-shade bottom";
+
+  const content = document.createElement("div");
+  content.className = "nxl-content";
 
   const top = document.createElement("div");
   top.className = "nxl-top";
@@ -270,16 +310,20 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
   controls.className = "nxl-controls";
   controls.dataset.field = "controls";
 
-  panel.appendChild(top);
-  panel.appendChild(divider);
-  panel.appendChild(metadata);
-  panel.appendChild(preview);
-  panel.appendChild(controls);
+  content.appendChild(top);
+  content.appendChild(divider);
+  content.appendChild(metadata);
+  content.appendChild(preview);
+  content.appendChild(controls);
 
   const debug = document.createElement("div");
   debug.className = "debug";
   debug.dataset.field = "debug";
-  panel.appendChild(debug);
+  content.appendChild(debug);
+
+  panel.appendChild(shadeTop);
+  panel.appendChild(shadeBottom);
+  panel.appendChild(content);
 
   shadow.appendChild(style);
   shadow.appendChild(panel);
@@ -408,17 +452,10 @@ export const updateOverlay = (
       ensureContainerPosition(container);
       container.appendChild(currentHost);
       if (previewRegion) {
-        const topPct = Math.max(
-          0,
-          Math.min(100, (previewRegion.top / previewRegion.containerHeight) * 100)
-        );
-        const bottomPct = Math.max(
-          0,
-          Math.min(100, (previewRegion.bottom / previewRegion.containerHeight) * 100)
-        );
-        currentHost.style.setProperty("--preview-top", `${topPct}%`);
-        currentHost.style.setProperty("--preview-bottom", `${bottomPct}%`);
-        currentHost.style.setProperty("--preview-height", `${previewRegion.previewHeight}px`);
+        const topPx = Math.max(120, previewRegion.top);
+        const bottomPx = Math.max(topPx + 80, previewRegion.bottom);
+        currentHost.style.setProperty("--preview-top-px", `${topPx}px`);
+        currentHost.style.setProperty("--preview-bottom-px", `${bottomPx}px`);
         currentHost.style.setProperty("--controls-height", `${previewRegion.controlsHeight}px`);
       }
       if (safeMode) applySafePosition(currentHost, anchor ?? container);
@@ -427,23 +464,27 @@ export const updateOverlay = (
       applySafePosition(currentHost, anchor);
     }
 
+    const panel = currentHost.shadowRoot?.querySelector(".nxl-card");
+    if (panel) {
+      panel.classList.toggle("safe", safeMode);
+    }
+
     applyOverlayData(data);
     return;
   }
 
-  if (previewRegion) {
-    const topPct = Math.max(
-      0,
-      Math.min(100, (previewRegion.top / previewRegion.containerHeight) * 100)
-    );
-    const bottomPct = Math.max(
-      0,
-      Math.min(100, (previewRegion.bottom / previewRegion.containerHeight) * 100)
-    );
-    currentHost.style.setProperty("--preview-top", `${topPct}%`);
-    currentHost.style.setProperty("--preview-bottom", `${bottomPct}%`);
-    currentHost.style.setProperty("--preview-height", `${previewRegion.previewHeight}px`);
+  if (previewRegion && currentHost) {
+    const topPx = Math.max(120, previewRegion.top);
+    const bottomPx = Math.max(topPx + 80, previewRegion.bottom);
+    currentHost.style.setProperty("--preview-top-px", `${topPx}px`);
+    currentHost.style.setProperty("--preview-bottom-px", `${bottomPx}px`);
     currentHost.style.setProperty("--controls-height", `${previewRegion.controlsHeight}px`);
   }
+
+  const panel = currentHost?.shadowRoot?.querySelector(".nxl-card");
+  if (panel) {
+    panel.classList.toggle("safe", safeMode);
+  }
+
   applyOverlayData(data);
 };

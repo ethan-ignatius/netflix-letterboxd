@@ -165,7 +165,8 @@ export const extractMetadataLine = (container?: Element | null): string | undefi
   const values = collectVisibleText(container, METADATA_SELECTORS)
     .map((value) => value.replace(/\s+/g, " ").trim())
     .filter((value) => value.length > 0)
-    .filter(isMetadataCandidate);
+    .filter(isMetadataCandidate)
+    .filter((value) => value.length <= 24);
   const unique = Array.from(new Set(values));
   if (!unique.length) return undefined;
   return unique.slice(0, 3).join(" • ");
@@ -176,6 +177,7 @@ export const extractGenresLine = (container?: Element | null): string | undefine
   const values = collectVisibleText(container, GENRE_SELECTORS)
     .map((value) => value.replace(/\s+/g, " ").trim())
     .filter((value) => value.length > 0)
+    .filter((value) => value.length <= 24)
     .filter((value) => !/episode|min/i.test(value));
   const unique = Array.from(new Set(values));
   if (!unique.length) return undefined;
