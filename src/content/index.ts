@@ -6,7 +6,9 @@ import {
   extractMetadataLine,
   findOverlayContainer,
   findOverlayAnchor,
-  findPreviewElement
+  findPreviewElement,
+  getRawTitleText,
+  normalizeNetflixTitle
 } from "./netflixSelectors";
 import { updateOverlay } from "./overlay";
 import type { ResolveTitleMessage, TitleResolvedMessage } from "../shared/types";
@@ -19,6 +21,8 @@ const TOGGLE_COMBO = {
   key: "l"
 };
 const OBSERVER_DEBOUNCE_MS = 250;
+const HERO_WIDTH_THRESHOLD = 0.85;
+const HERO_HEIGHT_THRESHOLD = 0.6;
 
 const ensureBadge = (enabled: boolean) => {
   const existing = document.getElementById(BADGE_ID);
@@ -80,6 +84,64 @@ let lastContainer: Element | null = null;
 let debounceTimer: number | undefined;
 let lastRequestId = "";
 
+const describeElement = (el: Element | null) => {
+  if (!el) return "none";
+  const parts = [el.tagName.toLowerCase()];
+  const className = (el as HTMLElement).className;
+  if (className) {
+    parts.push(
+      "." +
+        className
+          .toString()
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 3)
+          .join(".")
+    );
+  }
+  const dataUia = (el as HTMLElement).getAttribute?.("data-uia");
+  if (dataUia) parts.push(`[data-uia=\"${dataUia}\"]`);
+  return parts.join("");
+};
+
+const isWatchPage = () => window.location.pathname.startsWith("/watch");
+
+const hasMainPlayerVideo = () => {
+  const videos = Array.from(document.querySelectorAll("video"));
+  return videos.some((video) => {
+    const rect = video.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    const widthRatio = rect.width / window.innerWidth;
+    const heightRatio = rect.height / window.innerHeight;
+    return widthRatio > 0.85 || heightRatio > 0.6;
+  });
+};
+
+const hasEpisodeHeaderVisible = () => {
+  const candidates = Array.from(
+    document.querySelectorAll("h1, h2, h3, [data-uia*='episode'], [class*='episode']")
+  );
+  return candidates.some((el) => {
+    if (el instanceof HTMLElement) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return false;
+      const text = el.textContent ?? "";
+      return /episode/i.test(text);
+    }
+    return false;
+  });
+};
+
+const isHeroSized = (el: Element | null) => {
+  if (!el) return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+  return (
+    rect.width > window.innerWidth * HERO_WIDTH_THRESHOLD ||
+    rect.height > window.innerHeight * HERO_HEIGHT_THRESHOLD
+  );
+};
+
 const serializeCandidate = (
   candidate: ReturnType<typeof detectActiveTitleContext>["candidate"]
 ): string => {
@@ -95,14 +157,53 @@ const serializeCandidate = (
 const emitActiveTitleChange = () => {
   if (!overlayEnabled) return;
 
+  if (isWatchPage()) {
+    if (DEBUG) log("Overlay skipped", { reason: "watch-page" });
+    updateOverlay(null, null);
+    return;
+  }
+
+  if (hasMainPlayerVideo()) {
+    if (DEBUG) log("Overlay skipped", { reason: "main-player-video" });
+    updateOverlay(null, null);
+    return;
+  }
+
+  if (hasEpisodeHeaderVisible()) {
+    if (DEBUG) log("Overlay skipped", { reason: "episode-header-visible" });
+    updateOverlay(null, null);
+    return;
+  }
+
   const { candidate, container } = detectActiveTitleContext();
   const previewEl = findPreviewElement(container);
   const overlayContainer = findOverlayContainer(container, previewEl);
   const anchor = findOverlayAnchor(overlayContainer ?? container);
   const metadataLine = extractMetadataLine(overlayContainer ?? container);
   const genresLine = extractGenresLine(overlayContainer ?? container);
+  if (!overlayContainer || !previewEl) {
+    if (DEBUG) {
+      log("Overlay skipped", {
+        reason: "no-overlay-container",
+        anchor: describeElement(anchor),
+        container: describeElement(overlayContainer)
+      });
+    }
+    updateOverlay(null, null);
+    return;
+  }
+  if (isHeroSized(anchor) || isHeroSized(overlayContainer)) {
+    if (DEBUG) {
+      log("Overlay skipped", {
+        reason: "hero-sized-anchor",
+        anchor: describeElement(anchor),
+        container: describeElement(overlayContainer)
+      });
+    }
+    updateOverlay(null, null);
+    return;
+  }
   const previewRegion = (() => {
-    if (!overlayContainer || !previewEl) return undefined;
     const containerRect = overlayContainer.getBoundingClientRect();
     const previewRect = previewEl.getBoundingClientRect();
     if (containerRect.height === 0) return undefined;
@@ -117,7 +218,6 @@ const emitActiveTitleChange = () => {
       controlsHeight
     };
   })();
-  const safeMode = !overlayContainer || !previewEl;
   const key = serializeCandidate(candidate);
   if (!candidate) {
     try {
@@ -133,10 +233,18 @@ const emitActiveTitleChange = () => {
   if (key === lastActiveKey && overlayContainer === lastContainer) return;
   lastActiveKey = key;
   lastContainer = overlayContainer;
-  log("Active title changed", {
-    ...candidate,
-    at: new Date().toISOString()
-  });
+  if (DEBUG) {
+    const rawTitle = getRawTitleText(overlayContainer ?? container);
+    const normalizedTitle = normalizeNetflixTitle(rawTitle ?? candidate.titleText);
+    log("Active title changed", {
+      ...candidate,
+      anchor: describeElement(anchor),
+      container: describeElement(overlayContainer),
+      rawTitle,
+      normalizedTitle,
+      at: new Date().toISOString()
+    });
+  }
 
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   lastRequestId = requestId;
@@ -179,7 +287,7 @@ const emitActiveTitleChange = () => {
               : undefined
           },
           anchor,
-          safeMode,
+          false,
           previewRegion
         );
       } catch (error) {
@@ -206,7 +314,7 @@ const emitActiveTitleChange = () => {
         debug: DEBUG ? { ...candidate } : undefined
       },
       anchor,
-      safeMode,
+      false,
       previewRegion
     );
   } catch (error) {

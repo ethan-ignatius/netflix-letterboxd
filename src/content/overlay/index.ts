@@ -24,7 +24,6 @@ export interface OverlayData {
 }
 
 const OVERLAY_ID = "nxlb-overlay-panel";
-const SAFE_OFFSET = { x: 16, y: 12 };
 const positionOverrides = new WeakMap<Element, string>();
 
 const ensureContainerPosition = (container: Element) => {
@@ -56,6 +55,8 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
   host.id = OVERLAY_ID;
   host.style.position = "absolute";
   host.style.inset = "0";
+  host.style.width = "100%";
+  host.style.height = "100%";
   host.style.zIndex = "2147483647";
 
   const shadow = host.attachShadow({ mode: "open" });
@@ -338,17 +339,6 @@ let currentContainer: Element | null = null;
 let currentHost: HTMLDivElement | null = null;
 let currentAnchor: Element | null = null;
 
-const applySafePosition = (host: HTMLDivElement, anchor: Element | null) => {
-  if (!anchor) return;
-  const rect = anchor.getBoundingClientRect();
-  host.style.position = "fixed";
-  host.style.top = `${Math.max(8, rect.top - SAFE_OFFSET.y)}px`;
-  host.style.left = `${Math.max(8, rect.left)}px`;
-  host.style.right = "auto";
-  host.style.width = `${Math.max(280, rect.width)}px`;
-  host.style.height = `${Math.max(220, rect.height)}px`;
-};
-
 const formatRatingCount = (value?: number) => {
   if (value === undefined) return "";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -447,7 +437,7 @@ export const updateOverlay = (
     controlsHeight: number;
   }
 ) => {
-  if (!data || (!container && !anchor)) {
+  if (!data || !container) {
     if (currentHost) currentHost.remove();
     restoreContainerPosition(currentContainer);
     currentContainer = null;
@@ -463,23 +453,20 @@ export const updateOverlay = (
     currentAnchor = anchor;
     currentHost = buildOverlay(data);
 
-    if (container) {
-      ensureContainerPosition(container);
-      container.appendChild(currentHost);
-      if (previewRegion) {
-        const topPx = Math.max(160, previewRegion.top - 8);
-        const bottomPx = Math.max(
-          topPx + Math.max(120, previewRegion.previewHeight),
-          previewRegion.bottom + 8
-        );
-        currentHost.style.setProperty("--preview-top-px", `${topPx}px`);
-        currentHost.style.setProperty("--preview-bottom-px", `${bottomPx}px`);
-        currentHost.style.setProperty("--controls-height", `${previewRegion.controlsHeight}px`);
-      }
-      if (safeMode) applySafePosition(currentHost, anchor ?? container);
-    } else if (anchor) {
-      document.documentElement.appendChild(currentHost);
-      applySafePosition(currentHost, anchor);
+    ensureContainerPosition(container);
+    container.appendChild(currentHost);
+    const rect = container.getBoundingClientRect();
+    currentHost.style.width = `${rect.width}px`;
+    currentHost.style.height = `${rect.height}px`;
+    if (previewRegion) {
+      const topPx = Math.max(160, previewRegion.top - 8);
+      const bottomPx = Math.max(
+        topPx + Math.max(120, previewRegion.previewHeight),
+        previewRegion.bottom + 8
+      );
+      currentHost.style.setProperty("--preview-top-px", `${topPx}px`);
+      currentHost.style.setProperty("--preview-bottom-px", `${bottomPx}px`);
+      currentHost.style.setProperty("--controls-height", `${previewRegion.controlsHeight}px`);
     }
 
     const panel = currentHost.shadowRoot?.querySelector(".nxl-card");
@@ -492,6 +479,9 @@ export const updateOverlay = (
   }
 
   if (previewRegion && currentHost) {
+    const rect = container.getBoundingClientRect();
+    currentHost.style.width = `${rect.width}px`;
+    currentHost.style.height = `${rect.height}px`;
     const topPx = Math.max(160, previewRegion.top - 8);
     const bottomPx = Math.max(
       topPx + Math.max(120, previewRegion.previewHeight),

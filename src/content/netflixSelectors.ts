@@ -12,6 +12,8 @@ const CONTAINER_SELECTORS = [
   "[role='dialog']",
   "[aria-modal='true']",
   "[aria-expanded='true']",
+  "[data-uia*='jawbone']",
+  "[class*='jawbone']",
   "[data-uia*='preview']",
   "[data-uia*='billboard']",
   "[data-uia*='hero']",
@@ -39,7 +41,9 @@ const PREVIEW_SELECTORS = [
   "[data-uia*='hero'] img"
 ];
 
-const EPISODE_TITLE_PATTERN = /(S\\d+\\s*:?\\s*E\\d+|Episode\\s*\\d+|\\bE\\d+\\b)/i;
+const EPISODE_TITLE_PATTERN =
+  /(S\d+\s*:?\s*E\d+|Season\s*\d+\s*Episode\s*\d+|Episode\s*\d+|\bE\d+\b)/i;
+const EPISODE_TIME_PATTERN = /(\b\d+\s*(m|min|minutes)\b|\b\d+\s*of\s*\d+\s*(m|min|minutes)\b)/i;
 
 const METADATA_SELECTORS = [
   "[data-uia*='maturity-rating']",
@@ -95,6 +99,7 @@ const isMetadataCandidate = (value: string) => {
   const lower = value.toLowerCase();
   if (lower.includes("episode")) return false;
   if (lower.includes("min")) return false;
+  if (lower.includes("of ")) return false;
   if (lower.includes("season") || lower.includes("hd") || lower.includes("tv-")) return true;
   return true;
 };
@@ -112,6 +117,22 @@ const parseYearFromText = (text?: string): number | undefined => {
   const year = Number(match[1]);
   if (Number.isNaN(year)) return undefined;
   return year;
+};
+
+export const normalizeNetflixTitle = (raw?: string): string | undefined => {
+  if (!raw) return undefined;
+  let value = raw;
+  value = value.replace(/^\s*S\d+\s*:?\s*E\d+\s*/i, "");
+  value = value.replace(/"[^"]*"/g, (match) => {
+    const inner = match.replace(/"/g, "");
+    return EPISODE_TITLE_PATTERN.test(inner) ? "" : match;
+  });
+  value = value.replace(/Episode\s*\d+/gi, "");
+  value = value.replace(/\bE\d+\b/gi, "");
+  value = value.replace(EPISODE_TIME_PATTERN, "");
+  value = value.replace(/\s+of\s+\d+\s*(m|min|minutes)?/gi, "");
+  value = value.replace(/\s+/g, " ").trim();
+  return value.length ? value : undefined;
 };
 
 const extractFromAnchor = (anchor: HTMLAnchorElement, source: string): ActiveTitleCandidate => {
@@ -132,6 +153,11 @@ const extractTitleTextNear = (container: Element): string | undefined => {
   return undefined;
 };
 
+export const getRawTitleText = (container?: Element | null): string | undefined => {
+  if (!container) return undefined;
+  return extractTitleTextNear(container);
+};
+
 const findPrimaryTitle = (container?: Element | null): string | undefined => {
   if (!container) return undefined;
   for (const selector of TITLE_TEXT_SELECTORS) {
@@ -140,8 +166,9 @@ const findPrimaryTitle = (container?: Element | null): string | undefined => {
       if (!isVisible(node)) continue;
       const text = normalizeText(node.textContent);
       if (!text) continue;
-      if (EPISODE_TITLE_PATTERN.test(text)) continue;
-      return text;
+      if (EPISODE_TITLE_PATTERN.test(text) || EPISODE_TIME_PATTERN.test(text)) continue;
+      const normalized = normalizeNetflixTitle(text);
+      if (normalized) return normalized;
     }
   }
   return undefined;
@@ -192,6 +219,7 @@ export const extractMetadataLine = (container?: Element | null): string | undefi
     .map((value) => value.replace(/\s+/g, " ").trim())
     .filter((value) => value.length > 0)
     .filter(isMetadataCandidate)
+    .filter((value) => !EPISODE_TIME_PATTERN.test(value))
     .filter((value) => value.length <= 24);
   const unique = Array.from(new Set(values));
   if (!unique.length) return undefined;
@@ -214,15 +242,15 @@ export const resolveTitleText = (
   container?: Element | null,
   fallback?: string
 ): string | undefined => {
-  const cleanFallback = fallback ? fallback.replace(EPISODE_TITLE_PATTERN, "").trim() : undefined;
-  if (cleanFallback && !EPISODE_TITLE_PATTERN.test(cleanFallback)) {
-    return cleanFallback;
-  }
-
   const primary = findPrimaryTitle(container);
   if (primary) return primary;
 
-  if (fallback) return fallback;
+  const normalizedFallback = normalizeNetflixTitle(fallback);
+  if (normalizedFallback && !EPISODE_TITLE_PATTERN.test(normalizedFallback)) {
+    return normalizedFallback;
+  }
+
+  if (fallback) return normalizeNetflixTitle(fallback) ?? fallback;
   return undefined;
 };
 
@@ -245,17 +273,29 @@ export const findOverlayContainer = (
 
   let best: Element | null = null;
   let bestArea = 0;
+  const maxWidth = window.innerWidth * 0.85;
+  const maxHeight = window.innerHeight * 0.6;
   candidates.forEach((el) => {
     if (!isVisible(el)) return;
     const rect = el.getBoundingClientRect();
     const area = rect.width * rect.height;
+    if (rect.width > maxWidth || rect.height > maxHeight) return;
     if (area > bestArea && rect.width > 240 && rect.height > 180) {
       best = el;
       bestArea = area;
     }
   });
 
-  return best ?? container ?? preview ?? null;
+  if (best) return best;
+  const isValid = (el?: Element | null) => {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    return rect.width <= maxWidth && rect.height <= maxHeight;
+  };
+  if (isValid(container)) return container ?? null;
+  if (isValid(preview)) return preview ?? null;
+  return null;
 };
 
 const findBestAnchorIn = (container: Element): HTMLAnchorElement | undefined => {
@@ -269,6 +309,22 @@ const findExpandedContainers = (): Element[] => {
   const selectors = CONTAINER_SELECTORS.join(",");
   const nodes = Array.from(document.querySelectorAll(selectors));
   const visible = nodes.filter(isVisible);
+  const maxWidth = window.innerWidth * 0.85;
+  const maxHeight = window.innerHeight * 0.6;
+  const filtered = visible.filter((el) => {
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    if (rect.width < 240 || rect.height < 180) return false;
+    if (rect.width > maxWidth || rect.height > maxHeight) return false;
+    return true;
+  });
+  if (filtered.length > 0) {
+    return filtered.sort((a, b) => {
+      const ra = a.getBoundingClientRect();
+      const rb = b.getBoundingClientRect();
+      return rb.width * rb.height - ra.width * ra.height;
+    });
+  }
   return visible.length > 0 ? visible : nodes;
 };
 
