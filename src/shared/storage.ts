@@ -5,6 +5,8 @@ export interface StorageState {
   letterboxdExport?: LetterboxdExport;
   lastImportAt?: string;
   overlayEnabled?: boolean;
+  tmdbApiKey?: string;
+  tmdbCache?: Record<string, unknown>;
 }
 
 export const getStorage = async (): Promise<StorageState> => {
@@ -12,7 +14,9 @@ export const getStorage = async (): Promise<StorageState> => {
   return chrome.storage.local.get([
     "letterboxdExport",
     "lastImportAt",
-    "overlayEnabled"
+    "overlayEnabled",
+    "tmdbApiKey",
+    "tmdbCache"
   ]) as Promise<StorageState>;
 };
 

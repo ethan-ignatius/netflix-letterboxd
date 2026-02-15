@@ -1,4 +1,9 @@
-export type StorageKeys = "letterboxdExport" | "lastImportAt" | "overlayEnabled";
+export type StorageKeys =
+  | "letterboxdExport"
+  | "lastImportAt"
+  | "overlayEnabled"
+  | "tmdbApiKey"
+  | "tmdbCache";
 
 export interface LetterboxdExportMeta {
   importedAt: string;
