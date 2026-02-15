@@ -401,7 +401,7 @@ const computeMatchScore = (
     .map((entry) => entry.genre);
   const explanation =
     topGenres.length > 0
-      ? `Because you like ${topGenres.join(\", \")}`
+      ? `Because you like ${topGenres.join(", ")}`
       : undefined;
 
   return { matchScore: score, matchExplanation: explanation };
