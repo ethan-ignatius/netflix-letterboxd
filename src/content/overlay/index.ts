@@ -4,60 +4,17 @@ export interface OverlayData {
   genresLine?: string;
   communityRating?: number;
   ratingCount?: number;
-  inWatchlist?: boolean;
-  userRating?: number;
   matchScore?: number;
   matchExplanation?: string;
-  debug?: {
-    titleText?: string;
-    year?: number;
-    netflixTitleId?: string;
-    href?: string;
-    tmdbId?: number;
-    tmdbVoteAverage?: number;
-    tmdbVoteCount?: number;
-    inWatchlist?: boolean;
-    userRating?: number;
-    matchScore?: number;
-    matchExplanation?: string;
-  };
 }
 
-const OVERLAY_ID = "nxlb-overlay-panel";
-const positionOverrides = new WeakMap<Element, string>();
+const TOP_SECTION_ID = "nxlb-top-section";
 
-const ensureContainerPosition = (container: Element) => {
-  const computed = window.getComputedStyle(container);
-  if (computed.position !== "static") return;
-
-  if (!positionOverrides.has(container)) {
-    positionOverrides.set(container, container instanceof HTMLElement ? container.style.position : "");
-  }
-
-  if (container instanceof HTMLElement) {
-    container.style.position = "relative";
-    container.dataset.nxlbPositioned = "true";
-  }
-};
-
-const restoreContainerPosition = (container: Element | null) => {
-  if (!container || !(container instanceof HTMLElement)) return;
-  if (!container.dataset.nxlbPositioned) return;
-
-  const previous = positionOverrides.get(container) ?? "";
-  container.style.position = previous;
-  delete container.dataset.nxlbPositioned;
-  positionOverrides.delete(container);
-};
-
-const buildOverlay = (data: OverlayData): HTMLDivElement => {
+const buildTopSection = (data: OverlayData): HTMLDivElement => {
   const host = document.createElement("div");
-  host.id = OVERLAY_ID;
-  host.style.position = "absolute";
-  host.style.top = "16px";
-  host.style.left = "16px";
-  host.style.right = "16px";
-  host.style.zIndex = "2147483647";
+  host.id = TOP_SECTION_ID;
+  host.style.display = "block";
+  host.style.width = "100%";
   host.style.pointerEvents = "none";
 
   const shadow = host.attachShadow({ mode: "open" });
@@ -67,42 +24,37 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       all: initial;
       font-family: "Netflix Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
       pointer-events: none;
-      --overlay-max-height: 360px;
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
     }
-    .nxl-card {
-      background: rgba(0, 0, 0, 0.88);
-      backdrop-filter: blur(8px);
+    .nxl-top-section {
+      background: rgba(0, 0, 0, 0.85);
       color: #f5f5f5;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
       padding: 20px;
+      border-top-left-radius: 12px;
+      border-top-right-radius: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       display: grid;
       gap: 10px;
-      max-height: var(--overlay-max-height);
-      overflow: hidden;
-      animation: nxlFadeIn 150ms ease-out;
+      box-sizing: border-box;
     }
-    .nxl-top {
+    .nxl-header {
       display: flex;
-      justify-content: space-between;
       align-items: flex-start;
+      justify-content: space-between;
       gap: 16px;
-    }
-    .nxl-title-section {
-      flex: 1;
-      min-width: 0;
-      max-width: 70%;
     }
     .nxl-title {
       font-size: 30px;
       font-weight: 700;
-      letter-spacing: 0.01em;
       line-height: 1.1;
+      letter-spacing: 0.01em;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      max-width: 70%;
     }
     .nxl-meta {
       font-size: 14px;
@@ -123,7 +75,7 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       overflow: hidden;
     }
     .nxl-branding {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 8px;
       font-size: 12px;
@@ -139,23 +91,18 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
     .nxl-dot {
       width: 8px;
       height: 8px;
-      border-radius: 50%;
+      border-radius: 999px;
       display: inline-block;
     }
     .nxl-dot.green { background: #00c46a; }
     .nxl-dot.orange { background: #f2b34c; }
     .nxl-dot.blue { background: #4aa8ff; }
-    .nxl-divider {
-      height: 1px;
-      width: 100%;
-      background: rgba(255, 255, 255, 0.1);
-    }
-    .nxl-metadata {
+    .nxl-body {
       display: grid;
       gap: 8px;
       font-size: 16px;
       color: rgba(255, 255, 255, 0.9);
-      max-height: calc(var(--overlay-max-height) - 170px);
+      max-height: 220px;
       overflow: auto;
     }
     .nxl-rating {
@@ -176,55 +123,36 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       color: #46d369;
       font-weight: 700;
       font-size: 20px;
-      animation: nxlPop 200ms ease-out;
     }
     .nxl-because {
       color: rgba(255, 255, 255, 0.7);
       font-size: 14px;
     }
-    .debug {
-      margin-top: 4px;
-      padding-top: 8px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      font-size: 11px;
-      opacity: 0.7;
-      display: none;
-      white-space: pre-wrap;
-    }
-    @keyframes nxlFadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes nxlPop {
-      0% { transform: scale(0.96); }
-      100% { transform: scale(1); }
-    }
   `;
 
-  const panel = document.createElement("div");
-  panel.className = "nxl-card";
+  const section = document.createElement("div");
+  section.className = "nxl-top-section";
 
-  const top = document.createElement("div");
-  top.className = "nxl-top";
+  const header = document.createElement("div");
+  header.className = "nxl-header";
 
-  const titleSection = document.createElement("div");
-  titleSection.className = "nxl-title-section";
+  const titleBlock = document.createElement("div");
 
   const title = document.createElement("div");
   title.className = "nxl-title";
   title.textContent = data.titleLine;
 
-  const metaLine = document.createElement("div");
-  metaLine.className = "nxl-meta";
-  metaLine.dataset.field = "metadata";
+  const meta = document.createElement("div");
+  meta.className = "nxl-meta";
+  meta.dataset.field = "metadata";
 
-  const genresLine = document.createElement("div");
-  genresLine.className = "nxl-genres";
-  genresLine.dataset.field = "genres";
+  const genres = document.createElement("div");
+  genres.className = "nxl-genres";
+  genres.dataset.field = "genres";
 
-  titleSection.appendChild(title);
-  titleSection.appendChild(metaLine);
-  titleSection.appendChild(genresLine);
+  titleBlock.appendChild(title);
+  titleBlock.appendChild(meta);
+  titleBlock.appendChild(genres);
 
   const branding = document.createElement("div");
   branding.className = "nxl-branding";
@@ -238,14 +166,11 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
     Letterboxd
   `;
 
-  top.appendChild(titleSection);
-  top.appendChild(branding);
+  header.appendChild(titleBlock);
+  header.appendChild(branding);
 
-  const divider = document.createElement("div");
-  divider.className = "nxl-divider";
-
-  const metadata = document.createElement("div");
-  metadata.className = "nxl-metadata";
+  const body = document.createElement("div");
+  body.className = "nxl-body";
 
   const communityRating = document.createElement("div");
   communityRating.className = "nxl-rating";
@@ -262,26 +187,20 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
   because.dataset.field = "because";
   because.textContent = "Because you like —";
 
-  metadata.appendChild(communityRating);
-  metadata.appendChild(match);
-  metadata.appendChild(because);
+  body.appendChild(communityRating);
+  body.appendChild(match);
+  body.appendChild(because);
 
-  const debug = document.createElement("div");
-  debug.className = "debug";
-  debug.dataset.field = "debug";
-
-  panel.appendChild(top);
-  panel.appendChild(divider);
-  panel.appendChild(metadata);
-  panel.appendChild(debug);
+  section.appendChild(header);
+  section.appendChild(body);
 
   shadow.appendChild(style);
-  shadow.appendChild(panel);
+  shadow.appendChild(section);
 
   return host;
 };
 
-let currentContainer: Element | null = null;
+let currentRoot: HTMLElement | null = null;
 let currentHost: HTMLDivElement | null = null;
 
 const formatRatingCount = (value?: number) => {
@@ -291,7 +210,7 @@ const formatRatingCount = (value?: number) => {
   return `${value}`;
 };
 
-const applyOverlayData = (data: OverlayData) => {
+const applyTopSectionData = (data: OverlayData) => {
   const titleEl = currentHost?.shadowRoot?.querySelector(".nxl-title");
   if (titleEl) titleEl.textContent = data.titleLine;
 
@@ -354,62 +273,23 @@ const applyOverlayData = (data: OverlayData) => {
       genresEl.textContent = "";
     }
   }
-
-  const debugEl = currentHost?.shadowRoot?.querySelector(
-    "[data-field='debug']"
-  ) as HTMLDivElement | null;
-  if (debugEl) {
-    if (data.debug) {
-      debugEl.style.display = "block";
-      debugEl.textContent = JSON.stringify(data.debug, null, 2);
-    } else {
-      debugEl.style.display = "none";
-      debugEl.textContent = "";
-    }
-  }
 };
 
-export const updateOverlay = (
-  container: Element | null,
-  data: OverlayData | null,
-  maxHeight?: number
-) => {
-  if (!data || !container) {
+export const injectTopSection = (expandedRoot: HTMLElement, data: OverlayData): boolean => {
+  const isNewRoot = currentRoot !== expandedRoot;
+  if (isNewRoot) {
     if (currentHost) currentHost.remove();
-    restoreContainerPosition(currentContainer);
-    currentContainer = null;
-    currentHost = null;
-    return;
+    currentRoot = expandedRoot;
+    currentHost = buildTopSection(data);
+    expandedRoot.insertBefore(currentHost, expandedRoot.firstChild);
   }
 
-  if (currentContainer !== container) {
-    if (currentHost) currentHost.remove();
-    restoreContainerPosition(currentContainer);
-    currentContainer = container;
-    currentHost = buildOverlay(data);
+  applyTopSectionData(data);
+  return isNewRoot;
+};
 
-    ensureContainerPosition(container);
-    container.appendChild(currentHost);
-    if (container instanceof HTMLElement) {
-      const rect = container.getBoundingClientRect();
-      currentHost.style.width = `${Math.max(0, rect.width - 32)}px`;
-    }
-
-    if (maxHeight && maxHeight > 120) {
-      currentHost.style.setProperty("--overlay-max-height", `${maxHeight}px`);
-    }
-
-    applyOverlayData(data);
-    return;
-  }
-
-  if (currentHost && maxHeight && maxHeight > 120) {
-    currentHost.style.setProperty("--overlay-max-height", `${maxHeight}px`);
-  }
-  if (currentHost && container instanceof HTMLElement) {
-    const rect = container.getBoundingClientRect();
-    currentHost.style.width = `${Math.max(0, rect.width - 32)}px`;
-  }
-
-  applyOverlayData(data);
+export const removeTopSection = () => {
+  if (currentHost) currentHost.remove();
+  currentRoot = null;
+  currentHost = null;
 };

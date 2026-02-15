@@ -5,14 +5,13 @@ import {
   extractDisplayTitle,
   extractGenresLine,
   extractMetadataLine,
-  findControlsRow,
   findExpandedRoot,
   findOverlayAnchor,
   findPreviewElement,
   getRawTitleText,
   normalizeNetflixTitle
 } from "./netflixSelectors";
-import { updateOverlay } from "./overlay";
+import { injectTopSection, removeTopSection } from "./overlay";
 import type { ResolveTitleMessage, TitleResolvedMessage } from "../shared/types";
 import { DEBUG } from "../shared/log";
 
@@ -152,7 +151,7 @@ const updateDebugOutline = (container: HTMLElement | null) => {
     lastOutlined = null;
   }
   if (container && DEBUG) {
-    container.style.outline = "1px solid rgba(70, 211, 105, 0.8)";
+    container.style.outline = "1px solid rgba(255, 80, 80, 0.85)";
     container.style.outlineOffset = "-1px";
     lastOutlined = container;
   }
@@ -175,19 +174,19 @@ const emitActiveTitleChange = () => {
 
   if (isWatchPage()) {
     if (DEBUG) log("Overlay skipped", { reason: "watch-page" });
-    updateOverlay(null, null);
+    removeTopSection();
     return;
   }
 
   if (hasMainPlayerVideo()) {
     if (DEBUG) log("Overlay skipped", { reason: "main-player-video" });
-    updateOverlay(null, null);
+    removeTopSection();
     return;
   }
 
   if (hasEpisodeHeaderVisible()) {
     if (DEBUG) log("Overlay skipped", { reason: "episode-header-visible" });
-    updateOverlay(null, null);
+    removeTopSection();
     return;
   }
 
@@ -200,20 +199,12 @@ const emitActiveTitleChange = () => {
     | null;
   if (anchorInRoot) {
     const href = anchorInRoot.getAttribute("href") ?? undefined;
-    const match = href?.match(/\\/title\\/(\\d+)/);
+    const match = href?.match(/\/title\/(\d+)/);
     if (match) candidate && (candidate.netflixTitleId = match[1]);
     if (href) candidate && (candidate.href = href);
   }
   const metadataLine = extractMetadataLine(expandedRoot ?? container);
   const genresLine = extractGenresLine(expandedRoot ?? container);
-  const controlsRow = findControlsRow(expandedRoot ?? container);
-  const overlayMaxHeight = (() => {
-    if (!expandedRoot || !controlsRow) return undefined;
-    const rootRect = expandedRoot.getBoundingClientRect();
-    const controlsRect = controlsRow.getBoundingClientRect();
-    const available = Math.max(120, controlsRect.top - rootRect.top - 16);
-    return available;
-  })();
   if (!expandedRoot || !previewEl) {
     if (DEBUG) {
       log("Overlay skipped", {
@@ -222,7 +213,7 @@ const emitActiveTitleChange = () => {
         container: describeElement(expandedRoot)
       });
     }
-    updateOverlay(null, null);
+    removeTopSection();
     updateDebugOutline(null);
     return;
   }
@@ -234,14 +225,14 @@ const emitActiveTitleChange = () => {
         container: describeElement(expandedRoot)
       });
     }
-    updateOverlay(null, null);
+    removeTopSection();
     updateDebugOutline(null);
     return;
   }
   updateDebugOutline(expandedRoot);
   if (!candidate) {
     try {
-      updateOverlay(null, null);
+      removeTopSection();
     } catch (error) {
       log("Overlay cleanup failed", { error });
     }
@@ -259,7 +250,7 @@ const emitActiveTitleChange = () => {
         rejectedTitleCandidates: displayTitle.rejectedCount
       });
     }
-    updateOverlay(null, null);
+    removeTopSection();
     updateDebugOutline(null);
     return;
   }
@@ -307,27 +298,18 @@ const emitActiveTitleChange = () => {
       log("Title resolved", { requestId, response });
 
       try {
-        updateOverlay(
-          expandedRoot,
-          {
-            titleLine: resolvedTitle,
-            metadataLine,
-            genresLine,
-            communityRating: response.payload.tmdbVoteAverage,
-            ratingCount: response.payload.tmdbVoteCount,
-            inWatchlist: response.payload.inWatchlist,
-            userRating: response.payload.userRating,
-            matchScore: response.payload.matchScore,
-            matchExplanation: response.payload.matchExplanation,
-            debug: DEBUG
-              ? {
-                ...candidate,
-                ...response.payload
-              }
-              : undefined
-          },
-          overlayMaxHeight
-        );
+        const didInject = injectTopSection(expandedRoot, {
+          titleLine: resolvedTitle,
+          metadataLine,
+          genresLine,
+          communityRating: response.payload.tmdbVoteAverage,
+          ratingCount: response.payload.tmdbVoteCount,
+          matchScore: response.payload.matchScore,
+          matchExplanation: response.payload.matchExplanation
+        });
+        if (DEBUG && didInject) {
+          log("Injected top section", { container: describeElement(expandedRoot) });
+        }
       } catch (error) {
         log("Overlay update failed", { error });
       }
@@ -339,16 +321,14 @@ const emitActiveTitleChange = () => {
   const titleLine = resolvedTitle;
 
   try {
-    updateOverlay(
-      expandedRoot,
-      {
-        titleLine,
-        metadataLine,
-        genresLine,
-        debug: DEBUG ? { ...candidate } : undefined
-      },
-      overlayMaxHeight
-    );
+    const didInject = injectTopSection(expandedRoot, {
+      titleLine,
+      metadataLine,
+      genresLine
+    });
+    if (DEBUG && didInject) {
+      log("Injected top section", { container: describeElement(expandedRoot) });
+    }
   } catch (error) {
     log("Overlay update failed", { error });
   }
