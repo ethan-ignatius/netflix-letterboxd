@@ -73,7 +73,9 @@ let lastContainer: Element | null = null;
 let debounceTimer: number | undefined;
 let lastRequestId = "";
 
-const serializeCandidate = (candidate: ReturnType<typeof detectActiveTitleContext>[\"candidate\"]): string => {
+const serializeCandidate = (
+  candidate: ReturnType<typeof detectActiveTitleContext>["candidate"]
+): string => {
   if (!candidate) return "";
   return [
     candidate.netflixTitleId ?? "",

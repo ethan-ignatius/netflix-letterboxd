@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Netflix + Letterboxd</title>
     <script type="module" crossorigin src="/popup/index.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/storage-BxG7gY1H.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-BenZj0WN.css">
+    <link rel="modulepreload" crossorigin href="/assets/storage-1ncC6wrF.js">
+    <link rel="modulepreload" crossorigin href="/assets/log-BKemMERr.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-DOI-ucr9.css">
   </head>
   <body>
     <div id="app">
@@ -14,10 +15,36 @@
         <h1>Netflix + Letterboxd</h1>
         <p>Bring your Letterboxd export into Netflix.</p>
       </header>
+
       <section class="panel">
-        <div class="label">Export Status</div>
-        <div id="status" class="status">Checking storage...</div>
-        <button id="clear" class="button" type="button">Clear Export</button>
+        <div class="row">
+          <div>
+            <div class="label">Enable overlay</div>
+            <div class="helper">Show the Netflix overlay panel.</div>
+          </div>
+          <label class="switch">
+            <input id="overlayToggle" type="checkbox" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="label">TMDb API Key</div>
+        <input id="tmdbKey" class="input" type="password" placeholder="Paste API key" />
+        <div class="actions">
+          <button id="saveKey" class="button" type="button">Save key</button>
+          <button id="clearCache" class="button secondary" type="button">Clear cache</button>
+        </div>
+        <div id="keyStatus" class="status">Not set.</div>
+      </section>
+
+      <section class="panel">
+        <div class="label">Letterboxd personalization</div>
+        <button id="uploadZip" class="button" type="button">Upload ZIP</button>
+        <input id="zipInput" class="file-input" type="file" accept=".zip" />
+        <div id="zipStatus" class="status">No export loaded.</div>
+        <div id="zipMeta" class="status small">Last imported: —</div>
       </section>
     </div>
   </body>
