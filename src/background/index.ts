@@ -26,6 +26,16 @@ const buildCacheKey = (title?: string, year?: number): string => {
   return year ? `${normalized} (${year})` : normalized;
 };
 
+const buildLetterboxdKey = (title?: string, year?: number): string => {
+  const normalized = normalizeTitle(title);
+  return year ? `${normalized}|${year}` : normalized;
+};
+
+const getLetterboxdIndex = async (): Promise<Record<string, { r?: number; w?: 1 }>> => {
+  const data = await chrome.storage.local.get(["letterboxdIndex"]);
+  return (data.letterboxdIndex as Record<string, { r?: number; w?: 1 }> | undefined) ?? {};
+};
+
 const getTmdbCache = async (): Promise<TmdbCacheState> => {
   const data = await chrome.storage.local.get([TMDB_CACHE_STORAGE]);
   return (data[TMDB_CACHE_STORAGE] as TmdbCacheState | undefined) ?? {};
@@ -119,6 +129,32 @@ const resolveTitleWithTmdb = async (payload: ResolveTitleMessage["payload"]) => 
   return resolved;
 };
 
+const resolveLetterboxdEntry = async (
+  payload: ResolveTitleMessage["payload"],
+  resolvedTitle?: string,
+  resolvedYear?: number
+) => {
+  const index = await getLetterboxdIndex();
+  const keys = [
+    buildLetterboxdKey(payload.titleText, payload.year),
+    buildLetterboxdKey(resolvedTitle, resolvedYear),
+    buildLetterboxdKey(payload.titleText, undefined),
+    buildLetterboxdKey(resolvedTitle, undefined)
+  ].filter((key) => key);
+
+  for (const key of keys) {
+    const entry = index[key];
+    if (entry) {
+      return {
+        inWatchlist: entry.w === 1,
+        userRating: entry.r
+      };
+    }
+  }
+
+  return {};
+};
+
 chrome.runtime.onInstalled.addListener((details) => {
   log("Extension installed", details);
 });
@@ -133,18 +169,34 @@ chrome.runtime.onMessage.addListener(
       void (async () => {
         try {
           const resolved = await resolveTitleWithTmdb(payload);
+          const lbData = await resolveLetterboxdEntry(
+            payload,
+            resolved.title,
+            resolved.releaseYear ?? payload.year
+          );
           const response: TitleResolvedMessage = {
             type: "TITLE_RESOLVED",
             requestId,
-            payload: resolved
+            payload: {
+              ...resolved,
+              ...lbData
+            }
           };
           sendResponse(response);
         } catch (error) {
           log("TMDb resolve failed", { error });
+          const lbData = await resolveLetterboxdEntry(
+            payload,
+            payload.titleText ?? "Unknown title",
+            payload.year
+          );
           sendResponse({
             type: "TITLE_RESOLVED",
             requestId,
-            payload: { title: payload.titleText ?? "Unknown title" }
+            payload: {
+              title: payload.titleText ?? "Unknown title",
+              ...lbData
+            }
           } satisfies TitleResolvedMessage);
         }
       })();

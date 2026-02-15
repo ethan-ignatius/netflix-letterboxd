@@ -60,6 +60,8 @@ export type TitleResolvedMessage = {
     tmdbVoteCount?: number;
     posterPath?: string;
     releaseYear?: number;
+    inWatchlist?: boolean;
+    userRating?: number;
   };
 };
 

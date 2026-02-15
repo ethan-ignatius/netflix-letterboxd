@@ -2,6 +2,8 @@ export interface OverlayData {
   titleLine: string;
   communityRating?: number;
   ratingCount?: number;
+  inWatchlist?: boolean;
+  userRating?: number;
 }
 
 const OVERLAY_ID = "nxlb-overlay-panel";
@@ -109,10 +111,12 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
 
   const watchlistBadge = document.createElement("div");
   watchlistBadge.className = "badge";
+  watchlistBadge.dataset.field = "watchlistBadge";
   watchlistBadge.textContent = "On Watchlist";
 
   const ratingBadge = document.createElement("div");
   ratingBadge.className = "badge";
+  ratingBadge.dataset.field = "ratingBadge";
   ratingBadge.textContent = "You rated ★★★★";
 
   badges.appendChild(watchlistBadge);
@@ -133,25 +137,7 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
 let currentContainer: Element | null = null;
 let currentHost: HTMLDivElement | null = null;
 
-export const updateOverlay = (container: Element | null, data: OverlayData | null) => {
-  if (!container || !data) {
-    if (currentHost) currentHost.remove();
-    restoreContainerPosition(currentContainer);
-    currentContainer = null;
-    currentHost = null;
-    return;
-  }
-
-  if (currentContainer !== container) {
-    if (currentHost) currentHost.remove();
-    restoreContainerPosition(currentContainer);
-    currentContainer = container;
-    currentHost = buildOverlay(data);
-    ensureContainerPosition(container);
-    container.appendChild(currentHost);
-    return;
-  }
-
+const applyOverlayData = (data: OverlayData) => {
   const titleEl = currentHost?.shadowRoot?.querySelector(".title");
   if (titleEl) titleEl.textContent = data.titleLine;
 
@@ -170,4 +156,55 @@ export const updateOverlay = (container: Element | null, data: OverlayData | nul
     ratingEl.textContent =
       data.ratingCount !== undefined ? `Rating count: ${data.ratingCount}` : "Rating count: —";
   }
+
+  const watchlistEl = currentHost?.shadowRoot?.querySelector(
+    "[data-field='watchlistBadge']"
+  ) as HTMLDivElement | null;
+  if (watchlistEl) {
+    watchlistEl.style.display = data.inWatchlist ? "inline-flex" : "none";
+  }
+
+  const ratingBadgeEl = currentHost?.shadowRoot?.querySelector(
+    "[data-field='ratingBadge']"
+  ) as HTMLDivElement | null;
+  if (ratingBadgeEl) {
+    if (data.userRating !== undefined) {
+      ratingBadgeEl.style.display = "inline-flex";
+      ratingBadgeEl.textContent = `You rated ${renderStars(data.userRating)}`;
+    } else {
+      ratingBadgeEl.style.display = "none";
+    }
+  }
+};
+
+export const updateOverlay = (container: Element | null, data: OverlayData | null) => {
+  if (!container || !data) {
+    if (currentHost) currentHost.remove();
+    restoreContainerPosition(currentContainer);
+    currentContainer = null;
+    currentHost = null;
+    return;
+  }
+
+  if (currentContainer !== container) {
+    if (currentHost) currentHost.remove();
+    restoreContainerPosition(currentContainer);
+    currentContainer = container;
+    currentHost = buildOverlay(data);
+    ensureContainerPosition(container);
+    container.appendChild(currentHost);
+    applyOverlayData(data);
+    return;
+  }
+
+  applyOverlayData(data);
+};
+
+const renderStars = (rating: number): string => {
+  const clamped = Math.max(0, Math.min(5, rating));
+  const full = Math.floor(clamped);
+  const half = clamped - full >= 0.5;
+  const stars = "★".repeat(full);
+  if (half) return `${stars}½`;
+  return stars || "—";
 };

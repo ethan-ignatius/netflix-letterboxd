@@ -125,7 +125,9 @@ const emitActiveTitleChange = () => {
       updateOverlay(container, {
         titleLine,
         communityRating: response.payload.tmdbVoteAverage,
-        ratingCount: response.payload.tmdbVoteCount
+        ratingCount: response.payload.tmdbVoteCount,
+        inWatchlist: response.payload.inWatchlist,
+        userRating: response.payload.userRating
       });
     })
     .catch((err) => {
