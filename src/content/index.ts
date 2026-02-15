@@ -1,5 +1,6 @@
 import { log } from "../shared/log";
 import { getStorage, setStorage } from "../shared/storage";
+import { detectActiveTitle } from "./netflixSelectors";
 
 const ROOT_ID = "nxlb-shadow-root";
 const BADGE_ID = "nxlb-debug-badge";
@@ -8,6 +9,7 @@ const TOGGLE_COMBO = {
   shiftKey: true,
   key: "l"
 };
+const OBSERVER_DEBOUNCE_MS = 250;
 
 const ensureBadge = (enabled: boolean) => {
   const existing = document.getElementById(BADGE_ID);
@@ -140,6 +142,51 @@ const applyOverlayState = async (enabled: boolean) => {
   ensureBadge(enabled);
 };
 
+let lastActiveKey = "";
+let debounceTimer: number | undefined;
+
+const serializeCandidate = (candidate: ReturnType<typeof detectActiveTitle>): string => {
+  if (!candidate) return "";
+  return [
+    candidate.netflixTitleId ?? "",
+    candidate.titleText ?? "",
+    candidate.year ?? "",
+    candidate.href ?? ""
+  ].join("|");
+};
+
+const emitActiveTitleChange = () => {
+  const candidate = detectActiveTitle();
+  const key = serializeCandidate(candidate);
+  if (!candidate || key === lastActiveKey) return;
+  lastActiveKey = key;
+  log("Active title changed", {
+    ...candidate,
+    at: new Date().toISOString()
+  });
+};
+
+const scheduleActiveTitleCheck = () => {
+  if (debounceTimer) window.clearTimeout(debounceTimer);
+  debounceTimer = window.setTimeout(() => {
+    emitActiveTitleChange();
+  }, OBSERVER_DEBOUNCE_MS);
+};
+
+const observeTitleChanges = () => {
+  const observer = new MutationObserver(() => scheduleActiveTitleCheck());
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style", "aria-expanded", "aria-hidden"]
+  });
+
+  document.addEventListener("pointerover", scheduleActiveTitleCheck, true);
+  document.addEventListener("focusin", scheduleActiveTitleCheck, true);
+  scheduleActiveTitleCheck();
+};
+
 const toggleOverlay = async () => {
   const state = await getStorage();
   const next = !(state.overlayEnabled ?? true);
@@ -163,6 +210,7 @@ const init = async () => {
   const state = await getStorage();
   const enabled = state.overlayEnabled ?? true;
   await applyOverlayState(enabled);
+  observeTitleChanges();
   window.addEventListener("keydown", handleKeydown);
 };
 
