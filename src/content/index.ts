@@ -1,7 +1,58 @@
 import { log } from "../shared/log";
-import { getStorage } from "../shared/storage";
+import { getStorage, setStorage } from "../shared/storage";
 
 const ROOT_ID = "nxlb-shadow-root";
+const BADGE_ID = "nxlb-debug-badge";
+const TOGGLE_COMBO = {
+  ctrlKey: true,
+  shiftKey: true,
+  key: "l"
+};
+
+const ensureBadge = (enabled: boolean) => {
+  const existing = document.getElementById(BADGE_ID);
+  if (!enabled) {
+    existing?.remove();
+    return;
+  }
+
+  if (existing) return;
+
+  const host = document.createElement("div");
+  host.id = BADGE_ID;
+  host.style.position = "fixed";
+  host.style.bottom = "16px";
+  host.style.right = "16px";
+  host.style.zIndex = "2147483647";
+
+  const shadow = host.attachShadow({ mode: "open" });
+  const style = document.createElement("style");
+  style.textContent = `
+    :host {
+      all: initial;
+      font-family: "Space Grotesk", sans-serif;
+    }
+    .badge {
+      background: #111;
+      color: #f5f5f5;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
+    }
+  `;
+
+  const badge = document.createElement("div");
+  badge.className = "badge";
+  badge.textContent = "N×L active";
+
+  shadow.appendChild(style);
+  shadow.appendChild(badge);
+  document.documentElement.appendChild(host);
+};
 
 const mountOverlay = () => {
   if (document.getElementById(ROOT_ID)) {
@@ -80,8 +131,45 @@ const mountOverlay = () => {
   log("Overlay mounted");
 };
 
+const applyOverlayState = async (enabled: boolean) => {
+  if (enabled) {
+    mountOverlay();
+  } else {
+    document.getElementById(ROOT_ID)?.remove();
+  }
+  ensureBadge(enabled);
+};
+
+const toggleOverlay = async () => {
+  const state = await getStorage();
+  const next = !(state.overlayEnabled ?? true);
+  await setStorage({ overlayEnabled: next });
+  await applyOverlayState(next);
+  log("Overlay toggled", { enabled: next });
+};
+
+const handleKeydown = (event: KeyboardEvent) => {
+  if (
+    event.ctrlKey === TOGGLE_COMBO.ctrlKey &&
+    event.shiftKey === TOGGLE_COMBO.shiftKey &&
+    event.key.toLowerCase() === TOGGLE_COMBO.key
+  ) {
+    event.preventDefault();
+    toggleOverlay().catch((err) => log("Toggle failed", err));
+  }
+};
+
+const init = async () => {
+  const state = await getStorage();
+  const enabled = state.overlayEnabled ?? true;
+  await applyOverlayState(enabled);
+  window.addEventListener("keydown", handleKeydown);
+};
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", mountOverlay, { once: true });
+  document.addEventListener("DOMContentLoaded", () => {
+    init().catch((err) => log("Init failed", err));
+  }, { once: true });
 } else {
-  mountOverlay();
+  init().catch((err) => log("Init failed", err));
 }

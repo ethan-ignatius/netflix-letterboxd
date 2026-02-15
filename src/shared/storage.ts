@@ -4,11 +4,16 @@ import type { LetterboxdExport } from "./types";
 export interface StorageState {
   letterboxdExport?: LetterboxdExport;
   lastImportAt?: string;
+  overlayEnabled?: boolean;
 }
 
 export const getStorage = async (): Promise<StorageState> => {
   log("Loading storage state");
-  return chrome.storage.local.get(["letterboxdExport", "lastImportAt"]) as Promise<StorageState>;
+  return chrome.storage.local.get([
+    "letterboxdExport",
+    "lastImportAt",
+    "overlayEnabled"
+  ]) as Promise<StorageState>;
 };
 
 export const setStorage = async (state: StorageState): Promise<void> => {

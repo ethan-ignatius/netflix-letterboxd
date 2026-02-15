@@ -1,4 +1,4 @@
-export type StorageKeys = "letterboxdExport" | "lastImportAt";
+export type StorageKeys = "letterboxdExport" | "lastImportAt" | "overlayEnabled";
 
 export interface LetterboxdExportMeta {
   importedAt: string;
