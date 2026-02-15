@@ -62,6 +62,8 @@ export type TitleResolvedMessage = {
     releaseYear?: number;
     inWatchlist?: boolean;
     userRating?: number;
+    matchScore?: number;
+    matchExplanation?: string;
   };
 };
 

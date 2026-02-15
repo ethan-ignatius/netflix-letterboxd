@@ -127,7 +127,9 @@ const emitActiveTitleChange = () => {
         communityRating: response.payload.tmdbVoteAverage,
         ratingCount: response.payload.tmdbVoteCount,
         inWatchlist: response.payload.inWatchlist,
-        userRating: response.payload.userRating
+        userRating: response.payload.userRating,
+        matchScore: response.payload.matchScore,
+        matchExplanation: response.payload.matchExplanation
       });
     })
     .catch((err) => {

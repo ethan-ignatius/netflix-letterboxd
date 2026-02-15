@@ -4,6 +4,8 @@ export interface OverlayData {
   ratingCount?: number;
   inWatchlist?: boolean;
   userRating?: number;
+  matchScore?: number;
+  matchExplanation?: string;
 }
 
 const OVERLAY_ID = "nxlb-overlay-panel";
@@ -104,6 +106,7 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
 
   const match = document.createElement("div");
   match.className = "meta";
+  match.dataset.field = "match";
   match.textContent = "Your match: —";
 
   const badges = document.createElement("div");
@@ -173,6 +176,18 @@ const applyOverlayData = (data: OverlayData) => {
       ratingBadgeEl.textContent = `You rated ${renderStars(data.userRating)}`;
     } else {
       ratingBadgeEl.style.display = "none";
+    }
+  }
+
+  const matchEl = currentHost?.shadowRoot?.querySelector(
+    "[data-field='match']"
+  ) as HTMLDivElement | null;
+  if (matchEl) {
+    if (data.matchScore !== undefined) {
+      const explanation = data.matchExplanation ? ` · ${data.matchExplanation}` : "";
+      matchEl.textContent = `Your match: ${data.matchScore}${explanation}`;
+    } else {
+      matchEl.textContent = "Your match: —";
     }
   }
 };
