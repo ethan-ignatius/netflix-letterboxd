@@ -2,9 +2,11 @@ import { log } from "../shared/log";
 import { getStorage, setStorage } from "../shared/storage";
 import {
   detectActiveTitleContext,
+  extractDisplayTitle,
   extractGenresLine,
   extractMetadataLine,
-  findOverlayContainer,
+  findControlsRow,
+  findExpandedRoot,
   findOverlayAnchor,
   findPreviewElement,
   getRawTitleText,
@@ -83,6 +85,7 @@ let lastActiveKey = "";
 let lastContainer: Element | null = null;
 let debounceTimer: number | undefined;
 let lastRequestId = "";
+let lastOutlined: HTMLElement | null = null;
 
 const describeElement = (el: Element | null) => {
   if (!el) return "none";
@@ -142,6 +145,19 @@ const isHeroSized = (el: Element | null) => {
   );
 };
 
+const updateDebugOutline = (container: HTMLElement | null) => {
+  if (lastOutlined && lastOutlined !== container) {
+    lastOutlined.style.outline = "";
+    lastOutlined.style.outlineOffset = "";
+    lastOutlined = null;
+  }
+  if (container && DEBUG) {
+    container.style.outline = "1px solid rgba(70, 211, 105, 0.8)";
+    container.style.outlineOffset = "-1px";
+    lastOutlined = container;
+  }
+};
+
 const serializeCandidate = (
   candidate: ReturnType<typeof detectActiveTitleContext>["candidate"]
 ): string => {
@@ -177,71 +193,95 @@ const emitActiveTitleChange = () => {
 
   const { candidate, container } = detectActiveTitleContext();
   const previewEl = findPreviewElement(container);
-  const overlayContainer = findOverlayContainer(container, previewEl);
-  const anchor = findOverlayAnchor(overlayContainer ?? container);
-  const metadataLine = extractMetadataLine(overlayContainer ?? container);
-  const genresLine = extractGenresLine(overlayContainer ?? container);
-  if (!overlayContainer || !previewEl) {
+  const expandedRoot = findExpandedRoot(container) ?? (container as HTMLElement | null);
+  const anchor = findOverlayAnchor(expandedRoot ?? container);
+  const anchorInRoot = expandedRoot?.querySelector("a[href^='/title/']") as
+    | HTMLAnchorElement
+    | null;
+  if (anchorInRoot) {
+    const href = anchorInRoot.getAttribute("href") ?? undefined;
+    const match = href?.match(/\\/title\\/(\\d+)/);
+    if (match) candidate && (candidate.netflixTitleId = match[1]);
+    if (href) candidate && (candidate.href = href);
+  }
+  const metadataLine = extractMetadataLine(expandedRoot ?? container);
+  const genresLine = extractGenresLine(expandedRoot ?? container);
+  const controlsRow = findControlsRow(expandedRoot ?? container);
+  const overlayMaxHeight = (() => {
+    if (!expandedRoot || !controlsRow) return undefined;
+    const rootRect = expandedRoot.getBoundingClientRect();
+    const controlsRect = controlsRow.getBoundingClientRect();
+    const available = Math.max(120, controlsRect.top - rootRect.top - 16);
+    return available;
+  })();
+  if (!expandedRoot || !previewEl) {
     if (DEBUG) {
       log("Overlay skipped", {
         reason: "no-overlay-container",
         anchor: describeElement(anchor),
-        container: describeElement(overlayContainer)
+        container: describeElement(expandedRoot)
       });
     }
     updateOverlay(null, null);
+    updateDebugOutline(null);
     return;
   }
-  if (isHeroSized(anchor) || isHeroSized(overlayContainer)) {
+  if (isHeroSized(anchor) || isHeroSized(expandedRoot)) {
     if (DEBUG) {
       log("Overlay skipped", {
         reason: "hero-sized-anchor",
         anchor: describeElement(anchor),
-        container: describeElement(overlayContainer)
+        container: describeElement(expandedRoot)
       });
     }
     updateOverlay(null, null);
+    updateDebugOutline(null);
     return;
   }
-  const previewRegion = (() => {
-    const containerRect = overlayContainer.getBoundingClientRect();
-    const previewRect = previewEl.getBoundingClientRect();
-    if (containerRect.height === 0) return undefined;
-    const top = Math.max(0, previewRect.top - containerRect.top);
-    const bottom = Math.max(0, previewRect.bottom - containerRect.top);
-    const controlsHeight = Math.max(0, containerRect.bottom - previewRect.bottom);
-    return {
-      top,
-      bottom,
-      containerHeight: containerRect.height,
-      previewHeight: Math.max(0, previewRect.height),
-      controlsHeight
-    };
-  })();
-  const key = serializeCandidate(candidate);
+  updateDebugOutline(expandedRoot);
   if (!candidate) {
     try {
       updateOverlay(null, null);
     } catch (error) {
       log("Overlay cleanup failed", { error });
     }
+    updateDebugOutline(null);
     lastActiveKey = "";
     lastContainer = null;
     return;
   }
 
-  if (key === lastActiveKey && overlayContainer === lastContainer) return;
+  const displayTitle = extractDisplayTitle(expandedRoot);
+  if (!displayTitle.title) {
+    if (DEBUG) {
+      log("Overlay skipped", {
+        reason: "no-display-title",
+        rejectedTitleCandidates: displayTitle.rejectedCount
+      });
+    }
+    updateOverlay(null, null);
+    updateDebugOutline(null);
+    return;
+  }
+  const resolvedTitle = displayTitle.title;
+  const key = serializeCandidate({ ...candidate, titleText: resolvedTitle });
+  if (key === lastActiveKey && expandedRoot === lastContainer) return;
   lastActiveKey = key;
-  lastContainer = overlayContainer;
+  lastContainer = expandedRoot;
   if (DEBUG) {
-    const rawTitle = getRawTitleText(overlayContainer ?? container);
+    const rawTitle = getRawTitleText(expandedRoot ?? container);
     const normalizedTitle = normalizeNetflixTitle(rawTitle ?? candidate.titleText);
     log("Active title changed", {
       ...candidate,
       anchor: describeElement(anchor),
-      container: describeElement(overlayContainer),
+      container: describeElement(expandedRoot),
       rawTitle,
       normalizedTitle,
+      chosenTitle: displayTitle.title,
+      rejectedTitleCandidates: displayTitle.rejectedCount,
+      chosenTitleElement: displayTitle.chosen
+        ? displayTitle.chosen.outerHTML.slice(0, 200)
+        : undefined,
       at: new Date().toISOString()
     });
   }
@@ -253,7 +293,7 @@ const emitActiveTitleChange = () => {
     requestId,
     payload: {
       netflixTitleId: candidate.netflixTitleId,
-      titleText: candidate.titleText,
+      titleText: resolvedTitle,
       year: candidate.year,
       href: candidate.href
     }
@@ -268,9 +308,9 @@ const emitActiveTitleChange = () => {
 
       try {
         updateOverlay(
-          overlayContainer,
+          expandedRoot,
           {
-            titleLine,
+            titleLine: resolvedTitle,
             metadataLine,
             genresLine,
             communityRating: response.payload.tmdbVoteAverage,
@@ -286,9 +326,7 @@ const emitActiveTitleChange = () => {
               }
               : undefined
           },
-          anchor,
-          false,
-          previewRegion
+          overlayMaxHeight
         );
       } catch (error) {
         log("Overlay update failed", { error });
@@ -298,24 +336,18 @@ const emitActiveTitleChange = () => {
       log("Title resolve failed", { requestId, err });
     });
 
-  const titleLine = candidate.titleText
-    ? candidate.year
-      ? `${candidate.titleText} (${candidate.year})`
-      : candidate.titleText
-    : "Unknown title";
+  const titleLine = resolvedTitle;
 
   try {
     updateOverlay(
-      overlayContainer,
+      expandedRoot,
       {
         titleLine,
         metadataLine,
         genresLine,
         debug: DEBUG ? { ...candidate } : undefined
       },
-      anchor,
-      false,
-      previewRegion
+      overlayMaxHeight
     );
   } catch (error) {
     log("Overlay update failed", { error });

@@ -41,6 +41,13 @@ const PREVIEW_SELECTORS = [
   "[data-uia*='hero'] img"
 ];
 
+const CONTROLS_SELECTORS = [
+  "[data-uia*='controls']",
+  "[class*='controls']",
+  "[class*='control']",
+  "[role='toolbar']"
+];
+
 const EPISODE_TITLE_PATTERN =
   /(S\d+\s*:?\s*E\d+|Season\s*\d+\s*Episode\s*\d+|Episode\s*\d+|\bE\d+\b)/i;
 const EPISODE_TIME_PATTERN = /(\b\d+\s*(m|min|minutes)\b|\b\d+\s*of\s*\d+\s*(m|min|minutes)\b)/i;
@@ -59,6 +66,18 @@ const GENRE_SELECTORS = [
   "[data-uia*='genre']",
   "a[href*='/genre/']",
   "[class*='genre']"
+];
+
+const TITLE_LIKE_SELECTORS = [
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "[data-uia*='title']",
+  "[class*='title']",
+  "[class*='headline']",
+  "[class*='header']",
+  "[class*='name']"
 ];
 
 const isVisible = (el: Element): boolean => {
@@ -213,6 +232,52 @@ export const findPreviewElement = (container?: Element | null): Element | null =
   });
 };
 
+export const findControlsRow = (root?: Element | null): HTMLElement | null => {
+  if (!root) return null;
+  const candidates: HTMLElement[] = [];
+  CONTROLS_SELECTORS.forEach((selector) => {
+    root.querySelectorAll<HTMLElement>(selector).forEach((el) => {
+      if (!isVisible(el)) return;
+      candidates.push(el);
+    });
+  });
+  const unique = Array.from(new Set(candidates));
+  const scored = unique
+    .map((el) => {
+      const buttons = el.querySelectorAll("button, [role='button']").length;
+      const rect = el.getBoundingClientRect();
+      const score = buttons * 10 + rect.width;
+      return { el, score, top: rect.top };
+    })
+    .filter((entry) => entry.score > 0);
+  scored.sort((a, b) => b.score - a.score || b.top - a.top);
+  return scored[0]?.el ?? null;
+};
+
+export const hasMetadataSection = (root?: Element | null): boolean => {
+  if (!root) return false;
+  const selectors = [...METADATA_SELECTORS, ...GENRE_SELECTORS].join(",");
+  const nodes = Array.from(root.querySelectorAll(selectors));
+  return nodes.some((node) => isVisible(node));
+};
+
+export const findExpandedRoot = (root?: Element | null): HTMLElement | null => {
+  const candidates = findExpandedContainers();
+  const maxWidth = window.innerWidth * 0.85;
+  const maxHeight = window.innerHeight * 0.6;
+  for (const candidate of candidates) {
+    const rect = candidate.getBoundingClientRect();
+    if (rect.width > maxWidth || rect.height > maxHeight) continue;
+    const preview = findPreviewElement(candidate);
+    const controls = findControlsRow(candidate);
+    const metadata = hasMetadataSection(candidate);
+    if (preview && controls && metadata) {
+      return candidate as HTMLElement;
+    }
+  }
+  return null;
+};
+
 export const extractMetadataLine = (container?: Element | null): string | undefined => {
   if (!container) return undefined;
   const values = collectVisibleText(container, METADATA_SELECTORS)
@@ -236,6 +301,138 @@ export const extractGenresLine = (container?: Element | null): string | undefine
   const unique = Array.from(new Set(values));
   if (!unique.length) return undefined;
   return unique.slice(0, 3).join(" • ");
+};
+
+const isBannedTitleText = (text: string) => {
+  return (
+    EPISODE_TITLE_PATTERN.test(text) ||
+    EPISODE_TIME_PATTERN.test(text) ||
+    /\b\d+\s*of\s*\d+\s*(m|min|minutes)?\b/i.test(text) ||
+    /\b\d+\s*(m|min|minutes)\b/i.test(text)
+  );
+};
+
+const isInProgressRegion = (el: Element, controlsTop?: number) => {
+  if (el.closest('[role="progressbar"], [data-uia*="progress"], [class*="progress"]')) {
+    return true;
+  }
+  if (controlsTop !== undefined) {
+    const rect = el.getBoundingClientRect();
+    return rect.bottom >= controlsTop - 8;
+  }
+  return false;
+};
+
+export const extractDisplayTitle = (expandedRoot: HTMLElement): {
+  title: string | null;
+  chosen?: Element;
+  rejectedCount: number;
+} => {
+  const rootRect = expandedRoot.getBoundingClientRect();
+  const controls = findControlsRow(expandedRoot);
+  const controlsTop = controls ? controls.getBoundingClientRect().top : undefined;
+  const candidates = Array.from(expandedRoot.querySelectorAll(TITLE_LIKE_SELECTORS.join(",")));
+  let best: { el: Element; score: number; text: string } | null = null;
+  let rejectedCount = 0;
+  const episodeNodes: Element[] = [];
+
+  candidates.forEach((el) => {
+    if (!isVisible(el)) {
+      rejectedCount += 1;
+      return;
+    }
+    if (isInProgressRegion(el, controlsTop)) {
+      rejectedCount += 1;
+      return;
+    }
+    const text = normalizeText(el.textContent);
+    if (!text || text.length < 2 || text.length > 80) {
+      rejectedCount += 1;
+      return;
+    }
+    if (isBannedTitleText(text)) {
+      episodeNodes.push(el);
+      rejectedCount += 1;
+      return;
+    }
+
+    const rect = el.getBoundingClientRect();
+    const style = window.getComputedStyle(el as HTMLElement);
+    const fontSize = parseFloat(style.fontSize) || 14;
+    const fontWeightRaw = style.fontWeight === "bold" ? 700 : Number(style.fontWeight);
+    const fontWeight = Number.isNaN(fontWeightRaw) ? 400 : fontWeightRaw;
+    const dx = rect.left - rootRect.left;
+    const dy = rect.top - rootRect.top;
+    const dist = Math.hypot(dx, dy);
+    const score = fontSize * 10 + fontWeight / 10 + Math.max(0, 300 - dist);
+    if (!best || score > best.score) {
+      best = { el, score, text };
+    }
+  });
+
+  if (best) {
+    const normalized = normalizeNetflixTitle(best.text);
+    return { title: normalized ?? best.text, chosen: best.el, rejectedCount };
+  }
+
+  for (const episodeNode of episodeNodes) {
+    let current: Element | null = episodeNode.parentElement;
+    let depth = 0;
+    while (current && depth < 4) {
+      const siblingCandidates = Array.from(
+        current.querySelectorAll(TITLE_LIKE_SELECTORS.join(","))
+      ).filter((el) => el !== episodeNode);
+      for (const sibling of siblingCandidates) {
+        if (!isVisible(sibling)) continue;
+        if (isInProgressRegion(sibling, controlsTop)) continue;
+        const text = normalizeText(sibling.textContent);
+        if (!text || text.length < 2 || text.length > 80) continue;
+        if (isBannedTitleText(text)) continue;
+        return {
+          title: normalizeNetflixTitle(text) ?? text,
+          chosen: sibling,
+          rejectedCount
+        };
+      }
+      current = current.parentElement;
+      depth += 1;
+    }
+  }
+
+  const anchor = expandedRoot.querySelector("a[href^='/title/']");
+  if (anchor) {
+    const heading = anchor.querySelector(TITLE_LIKE_SELECTORS.join(","));
+    const directText = normalizeText(heading?.textContent || anchor.textContent);
+    if (directText && !isBannedTitleText(directText)) {
+      return {
+        title: normalizeNetflixTitle(directText) ?? directText,
+        chosen: heading ?? anchor,
+        rejectedCount
+      };
+    }
+
+    let current: Element | null = anchor.parentElement;
+    let depth = 0;
+    while (current && depth < 4) {
+      const nearby = Array.from(current.querySelectorAll(TITLE_LIKE_SELECTORS.join(",")));
+      for (const node of nearby) {
+        if (!isVisible(node)) continue;
+        if (isInProgressRegion(node, controlsTop)) continue;
+        const text = normalizeText(node.textContent);
+        if (!text || text.length < 2 || text.length > 80) continue;
+        if (isBannedTitleText(text)) continue;
+        return {
+          title: normalizeNetflixTitle(text) ?? text,
+          chosen: node,
+          rejectedCount
+        };
+      }
+      current = current.parentElement;
+      depth += 1;
+    }
+  }
+
+  return { title: null, rejectedCount };
 };
 
 export const resolveTitleText = (
