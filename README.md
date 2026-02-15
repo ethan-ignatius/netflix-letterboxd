@@ -25,9 +25,7 @@ Manifest V3 Chrome extension scaffold using TypeScript + Vite. Content script in
 5. Navigate to Netflix and hover an expanded title card to see the overlay.
 
 ## Screenshots
-- `docs/screenshots/popup.png` (placeholder)
-- `docs/screenshots/overlay.png` (placeholder)
-- `docs/screenshots/debug.png` (placeholder)
+- Coming soon
 
 ## Project Structure
 - `src/content/index.ts` - content script
