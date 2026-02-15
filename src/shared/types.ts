@@ -60,6 +60,7 @@ export type TitleResolvedMessage = {
     tmdbVoteCount?: number;
     posterPath?: string;
     releaseYear?: number;
+    tmdbMediaType?: "movie" | "tv";
     inWatchlist?: boolean;
     userRating?: number;
     matchScore?: number;

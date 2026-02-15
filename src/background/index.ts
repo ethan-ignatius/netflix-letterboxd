@@ -19,6 +19,7 @@ type TmdbCacheState = Record<string, TmdbCacheEntry>;
 
 type TmdbFeature = {
   tmdbId: number;
+  mediaType: "movie" | "tv";
   title?: string;
   releaseYear?: number;
   genres: string[];
@@ -105,13 +106,14 @@ const pickBestMatch = (results: any[], titleText?: string, year?: number) => {
   const normalized = normalizeTitle(titleText);
 
   const exactTitleAndYear = results.find((item) => {
-    const resultTitle = normalizeTitle(item.title);
-    const releaseYear = item.release_date ? Number(item.release_date.slice(0, 4)) : undefined;
+    const resultTitle = normalizeTitle(item.title ?? item.name);
+    const releaseDate = item.release_date ?? item.first_air_date;
+    const releaseYear = releaseDate ? Number(releaseDate.slice(0, 4)) : undefined;
     return resultTitle === normalized && year && releaseYear === year;
   });
   if (exactTitleAndYear) return exactTitleAndYear;
 
-  const exactTitle = results.find((item) => normalizeTitle(item.title) === normalized);
+  const exactTitle = results.find((item) => normalizeTitle(item.title ?? item.name) === normalized);
   if (exactTitle) return exactTitle;
 
   return results[0];
@@ -139,6 +141,14 @@ const resolveTitleWithTmdb = async (payload: ResolveTitleMessage["payload"]): Pr
   const cached = cache[cacheKey];
   if (cached && Date.now() - cached.storedAt < TMDB_CACHE_TTL_MS) {
     log("TMDb cache hit", { cacheKey });
+    const mediaType = cached.data.tmdbMediaType ?? "movie";
+    if (cached.data.tmdbId) {
+      const features = await getTmdbFeatures(apiKey, cached.data.tmdbId, mediaType);
+      return {
+        ...cached.data,
+        tmdbGenres: features?.genres ?? []
+      };
+    }
     return cached.data;
   }
 
@@ -146,31 +156,37 @@ const resolveTitleWithTmdb = async (payload: ResolveTitleMessage["payload"]): Pr
     api_key: apiKey,
     query: payload.titleText
   });
-  if (payload.year) params.set("year", String(payload.year));
 
-  const searchUrl = `${TMDB_BASE_URL}/search/movie?${params.toString()}`;
+  const searchUrl = `${TMDB_BASE_URL}/search/multi?${params.toString()}`;
   log("TMDb search", { searchUrl });
   const searchData = await fetchJson(searchUrl);
-  const match = pickBestMatch(searchData?.results ?? [], payload.titleText, payload.year);
+  const filtered = (searchData?.results ?? []).filter(
+    (item: { media_type?: string }) => item.media_type === "movie" || item.media_type === "tv"
+  );
+  const match = pickBestMatch(filtered, payload.titleText, payload.year);
 
   if (!match?.id) {
     log("TMDb no match", { titleText: payload.titleText });
     return { title: payload.titleText };
   }
 
-  const detailsUrl = `${TMDB_BASE_URL}/movie/${match.id}?api_key=${apiKey}`;
-  log("TMDb details", { detailsUrl });
+  const mediaType: "movie" | "tv" = match.media_type === "tv" ? "tv" : "movie";
+  const detailsUrl = `${TMDB_BASE_URL}/${mediaType}/${match.id}?api_key=${apiKey}`;
+  log("TMDb details", { detailsUrl, mediaType });
   const details = await fetchJson(detailsUrl);
 
-  const releaseYear = details.release_date ? Number(details.release_date.slice(0, 4)) : undefined;
+  const releaseDate =
+    mediaType === "tv" ? details.first_air_date ?? match.first_air_date : details.release_date ?? match.release_date;
+  const releaseYear = releaseDate ? Number(releaseDate.slice(0, 4)) : undefined;
 
   const resolved: ResolvedTitle = {
-    title: details.title ?? payload.titleText ?? "Unknown title",
+    title: (details.title ?? details.name) ?? payload.titleText ?? "Unknown title",
     tmdbId: details.id,
     tmdbVoteAverage: details.vote_average,
     tmdbVoteCount: details.vote_count,
     posterPath: details.poster_path ?? undefined,
     releaseYear: Number.isNaN(releaseYear) ? undefined : releaseYear,
+    tmdbMediaType: mediaType,
     tmdbGenres: Array.isArray(details.genres)
       ? details.genres.map((genre: { name: string }) => genre.name.toLowerCase())
       : []
@@ -195,21 +211,24 @@ const parseIndexKey = (key: string): { title: string; year?: number } => {
 
 const getTmdbFeatures = async (
   apiKey: string,
-  tmdbId: number
+  tmdbId: number,
+  mediaType: "movie" | "tv"
 ): Promise<TmdbFeature | null> => {
   const cache = await getFeatureCache();
-  const cacheKey = String(tmdbId);
+  const cacheKey = `${mediaType}:${tmdbId}`;
   const cached = cache[cacheKey];
   if (cached && Date.now() - cached.storedAt < TMDB_FEATURE_TTL_MS) {
     return cached.data;
   }
 
-  const detailsUrl = `${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${apiKey}`;
+  const detailsUrl = `${TMDB_BASE_URL}/${mediaType}/${tmdbId}?api_key=${apiKey}`;
   const details = await fetchJson(detailsUrl);
-  const releaseYear = details.release_date ? Number(details.release_date.slice(0, 4)) : undefined;
+  const releaseDate = mediaType === "tv" ? details.first_air_date : details.release_date;
+  const releaseYear = releaseDate ? Number(releaseDate.slice(0, 4)) : undefined;
   const features: TmdbFeature = {
     tmdbId,
-    title: details.title,
+    mediaType,
+    title: details.title ?? details.name,
     releaseYear: Number.isNaN(releaseYear) ? undefined : releaseYear,
     genres: Array.isArray(details.genres)
       ? details.genres.map((genre: { name: string }) => genre.name.toLowerCase())
@@ -226,7 +245,7 @@ const searchTmdbId = async (
   titleText: string,
   year?: number,
   cache?: TmdbCacheState
-): Promise<{ tmdbId: number; title?: string; releaseYear?: number } | null> => {
+): Promise<{ tmdbId: number; title?: string; releaseYear?: number; mediaType: "movie" } | null> => {
   if (cache) {
     const key = buildCacheKey(titleText, year);
     const cached = cache[key];
@@ -234,7 +253,8 @@ const searchTmdbId = async (
       return {
         tmdbId: cached.data.tmdbId,
         title: cached.data.title,
-        releaseYear: cached.data.releaseYear
+        releaseYear: cached.data.releaseYear,
+        mediaType: "movie"
       };
     }
   }
@@ -251,7 +271,8 @@ const searchTmdbId = async (
   return {
     tmdbId: match.id,
     title: match.title,
-    releaseYear: Number.isNaN(releaseYear) ? undefined : releaseYear
+    releaseYear: Number.isNaN(releaseYear) ? undefined : releaseYear,
+    mediaType: "movie"
   };
 };
 
@@ -294,7 +315,7 @@ const buildMatchProfile = async (): Promise<MatchProfile | null> => {
     const searchResult = await searchTmdbId(apiKey, title, year, tmdbCache);
     if (!searchResult) continue;
 
-    const features = await getTmdbFeatures(apiKey, searchResult.tmdbId);
+    const features = await getTmdbFeatures(apiKey, searchResult.tmdbId, searchResult.mediaType);
     if (!features) continue;
 
     const releaseYear = features.releaseYear ?? searchResult.releaseYear ?? year;
@@ -355,8 +376,7 @@ const computeMatchScore = (
 
   let weightedSum = 0;
   let totalWeight = 0;
-  let bestGenre = "";
-  let bestStrength = 0;
+  const positives: { genre: string; strength: number }[] = [];
 
   candidateGenres.forEach((genre) => {
     const normalized = genre.toLowerCase();
@@ -366,9 +386,8 @@ const computeMatchScore = (
     const strength = stats.strength;
     weightedSum += strength * confidence;
     totalWeight += confidence;
-    if (strength > bestStrength) {
-      bestStrength = strength;
-      bestGenre = normalized;
+    if (strength > 0) {
+      positives.push({ genre: normalized, strength });
     }
   });
 
@@ -376,9 +395,13 @@ const computeMatchScore = (
   const normalized = weightedSum / totalWeight;
   const score = Math.round(Math.max(0, Math.min(100, 50 + normalized * 20)));
 
+  const topGenres = positives
+    .sort((a, b) => b.strength - a.strength)
+    .slice(0, 2)
+    .map((entry) => entry.genre);
   const explanation =
-    bestStrength > 0.2 && bestGenre
-      ? `Because you rate ${bestGenre} highly`
+    topGenres.length > 0
+      ? `Because you like ${topGenres.join(\", \")}`
       : undefined;
 
   return { matchScore: score, matchExplanation: explanation };

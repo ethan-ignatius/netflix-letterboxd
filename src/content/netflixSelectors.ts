@@ -28,6 +28,33 @@ const TITLE_TEXT_SELECTORS = [
   "[class*='preview'] [class*='header']"
 ];
 
+const PREVIEW_SELECTORS = [
+  "video",
+  "img",
+  "[data-uia*='preview'] video",
+  "[data-uia*='preview'] img",
+  "[class*='preview'] video",
+  "[class*='preview'] img",
+  "[data-uia*='player'] video",
+  "[data-uia*='hero'] img"
+];
+
+const METADATA_SELECTORS = [
+  "[data-uia*='maturity-rating']",
+  "[data-uia*='season']",
+  "[data-uia*='resolution']",
+  "[data-uia*='hd']",
+  "[class*='maturity']",
+  "[class*='season']",
+  "[class*='quality']"
+];
+
+const GENRE_SELECTORS = [
+  "[data-uia*='genre']",
+  "a[href*='/genre/']",
+  "[class*='genre']"
+];
+
 const isVisible = (el: Element): boolean => {
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return false;
@@ -47,6 +74,27 @@ const normalizeText = (value?: string | null): string | undefined => {
   if (!value) return undefined;
   const text = value.replace(/\s+/g, " ").trim();
   return text.length ? text : undefined;
+};
+
+const collectVisibleText = (container: Element, selectors: string[]): string[] => {
+  const values: string[] = [];
+  selectors.forEach((selector) => {
+    container.querySelectorAll(selector).forEach((el) => {
+      if (!isVisible(el)) return;
+      const text = normalizeText(el.textContent);
+      if (!text) return;
+      values.push(text);
+    });
+  });
+  return values;
+};
+
+const isMetadataCandidate = (value: string) => {
+  const lower = value.toLowerCase();
+  if (lower.includes("episode")) return false;
+  if (lower.includes("min")) return false;
+  if (lower.includes("season") || lower.includes("hd") || lower.includes("tv-")) return true;
+  return true;
 };
 
 const parseTitleIdFromHref = (href?: string | null): string | undefined => {
@@ -101,6 +149,37 @@ export const findOverlayAnchor = (container?: Element | null): Element | null =>
     isVisible
   );
   return pageTitle ?? null;
+};
+
+export const findPreviewElement = (container?: Element | null): Element | null => {
+  if (!container) return null;
+  for (const selector of PREVIEW_SELECTORS) {
+    const el = container.querySelector(selector);
+    if (el && isVisible(el)) return el;
+  }
+  return null;
+};
+
+export const extractMetadataLine = (container?: Element | null): string | undefined => {
+  if (!container) return undefined;
+  const values = collectVisibleText(container, METADATA_SELECTORS)
+    .map((value) => value.replace(/\s+/g, " ").trim())
+    .filter((value) => value.length > 0)
+    .filter(isMetadataCandidate);
+  const unique = Array.from(new Set(values));
+  if (!unique.length) return undefined;
+  return unique.slice(0, 3).join(" • ");
+};
+
+export const extractGenresLine = (container?: Element | null): string | undefined => {
+  if (!container) return undefined;
+  const values = collectVisibleText(container, GENRE_SELECTORS)
+    .map((value) => value.replace(/\s+/g, " ").trim())
+    .filter((value) => value.length > 0)
+    .filter((value) => !/episode|min/i.test(value));
+  const unique = Array.from(new Set(values));
+  if (!unique.length) return undefined;
+  return unique.slice(0, 3).join(" • ");
 };
 
 const findBestAnchorIn = (container: Element): HTMLAnchorElement | undefined => {

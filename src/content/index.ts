@@ -1,6 +1,12 @@
 import { log } from "../shared/log";
 import { getStorage, setStorage } from "../shared/storage";
-import { detectActiveTitleContext, findOverlayAnchor } from "./netflixSelectors";
+import {
+  detectActiveTitleContext,
+  extractGenresLine,
+  extractMetadataLine,
+  findOverlayAnchor,
+  findPreviewElement
+} from "./netflixSelectors";
 import { updateOverlay } from "./overlay";
 import type { ResolveTitleMessage, TitleResolvedMessage } from "../shared/types";
 import { DEBUG } from "../shared/log";
@@ -90,6 +96,26 @@ const emitActiveTitleChange = () => {
 
   const { candidate, container } = detectActiveTitleContext();
   const anchor = findOverlayAnchor(container);
+  const previewEl = findPreviewElement(container);
+  const metadataLine = extractMetadataLine(container);
+  const genresLine = extractGenresLine(container);
+  const previewRegion = (() => {
+    if (!container || !previewEl) return undefined;
+    const containerRect = container.getBoundingClientRect();
+    const previewRect = previewEl.getBoundingClientRect();
+    if (containerRect.height === 0) return undefined;
+    const top = Math.max(0, previewRect.top - containerRect.top);
+    const bottom = Math.max(0, previewRect.bottom - containerRect.top);
+    const controlsHeight = Math.max(0, containerRect.bottom - previewRect.bottom);
+    return {
+      top,
+      bottom,
+      containerHeight: containerRect.height,
+      previewHeight: Math.max(0, previewRect.height),
+      controlsHeight
+    };
+  })();
+  const safeMode = !container || !previewEl;
   const key = serializeCandidate(candidate);
   if (!candidate) {
     try {
@@ -134,22 +160,25 @@ const emitActiveTitleChange = () => {
         updateOverlay(
           container,
           {
-          titleLine,
-          communityRating: response.payload.tmdbVoteAverage,
-          ratingCount: response.payload.tmdbVoteCount,
-          inWatchlist: response.payload.inWatchlist,
-          userRating: response.payload.userRating,
-          matchScore: response.payload.matchScore,
-          matchExplanation: response.payload.matchExplanation,
-          debug: DEBUG
-            ? {
+            titleLine,
+            metadataLine,
+            genresLine,
+            communityRating: response.payload.tmdbVoteAverage,
+            ratingCount: response.payload.tmdbVoteCount,
+            inWatchlist: response.payload.inWatchlist,
+            userRating: response.payload.userRating,
+            matchScore: response.payload.matchScore,
+            matchExplanation: response.payload.matchExplanation,
+            debug: DEBUG
+              ? {
                 ...candidate,
                 ...response.payload
               }
-            : undefined
-        },
+              : undefined
+          },
           anchor,
-          !container
+          safeMode,
+          previewRegion
         );
       } catch (error) {
         log("Overlay update failed", { error });
@@ -170,10 +199,13 @@ const emitActiveTitleChange = () => {
       container,
       {
         titleLine,
+        metadataLine,
+        genresLine,
         debug: DEBUG ? { ...candidate } : undefined
       },
       anchor,
-      !container
+      safeMode,
+      previewRegion
     );
   } catch (error) {
     log("Overlay update failed", { error });
