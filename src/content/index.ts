@@ -4,6 +4,7 @@ import {
   detectActiveTitleContext,
   extractGenresLine,
   extractMetadataLine,
+  findOverlayContainer,
   findOverlayAnchor,
   findPreviewElement
 } from "./netflixSelectors";
@@ -95,13 +96,14 @@ const emitActiveTitleChange = () => {
   if (!overlayEnabled) return;
 
   const { candidate, container } = detectActiveTitleContext();
-  const anchor = findOverlayAnchor(container);
   const previewEl = findPreviewElement(container);
-  const metadataLine = extractMetadataLine(container);
-  const genresLine = extractGenresLine(container);
+  const overlayContainer = findOverlayContainer(container, previewEl);
+  const anchor = findOverlayAnchor(overlayContainer ?? container);
+  const metadataLine = extractMetadataLine(overlayContainer ?? container);
+  const genresLine = extractGenresLine(overlayContainer ?? container);
   const previewRegion = (() => {
-    if (!container || !previewEl) return undefined;
-    const containerRect = container.getBoundingClientRect();
+    if (!overlayContainer || !previewEl) return undefined;
+    const containerRect = overlayContainer.getBoundingClientRect();
     const previewRect = previewEl.getBoundingClientRect();
     if (containerRect.height === 0) return undefined;
     const top = Math.max(0, previewRect.top - containerRect.top);
@@ -115,7 +117,7 @@ const emitActiveTitleChange = () => {
       controlsHeight
     };
   })();
-  const safeMode = !container || !previewEl;
+  const safeMode = !overlayContainer || !previewEl;
   const key = serializeCandidate(candidate);
   if (!candidate) {
     try {
@@ -128,9 +130,9 @@ const emitActiveTitleChange = () => {
     return;
   }
 
-  if (key === lastActiveKey && container === lastContainer) return;
+  if (key === lastActiveKey && overlayContainer === lastContainer) return;
   lastActiveKey = key;
-  lastContainer = container;
+  lastContainer = overlayContainer;
   log("Active title changed", {
     ...candidate,
     at: new Date().toISOString()
@@ -158,7 +160,7 @@ const emitActiveTitleChange = () => {
 
       try {
         updateOverlay(
-          container,
+          overlayContainer,
           {
             titleLine,
             metadataLine,
@@ -196,7 +198,7 @@ const emitActiveTitleChange = () => {
 
   try {
     updateOverlay(
-      container,
+      overlayContainer,
       {
         titleLine,
         metadataLine,

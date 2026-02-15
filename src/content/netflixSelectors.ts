@@ -39,6 +39,8 @@ const PREVIEW_SELECTORS = [
   "[data-uia*='hero'] img"
 ];
 
+const EPISODE_TITLE_PATTERN = /(S\\d+\\s*:?\\s*E\\d+|Episode\\s*\\d+|\\bE\\d+\\b)/i;
+
 const METADATA_SELECTORS = [
   "[data-uia*='maturity-rating']",
   "[data-uia*='season']",
@@ -130,6 +132,21 @@ const extractTitleTextNear = (container: Element): string | undefined => {
   return undefined;
 };
 
+const findPrimaryTitle = (container?: Element | null): string | undefined => {
+  if (!container) return undefined;
+  for (const selector of TITLE_TEXT_SELECTORS) {
+    const nodes = Array.from(container.querySelectorAll(selector));
+    for (const node of nodes) {
+      if (!isVisible(node)) continue;
+      const text = normalizeText(node.textContent);
+      if (!text) continue;
+      if (EPISODE_TITLE_PATTERN.test(text)) continue;
+      return text;
+    }
+  }
+  return undefined;
+};
+
 export const findOverlayAnchor = (container?: Element | null): Element | null => {
   if (container) {
     const anchor = findBestAnchorIn(container);
@@ -153,11 +170,20 @@ export const findOverlayAnchor = (container?: Element | null): Element | null =>
 
 export const findPreviewElement = (container?: Element | null): Element | null => {
   if (!container) return null;
-  for (const selector of PREVIEW_SELECTORS) {
-    const el = container.querySelector(selector);
-    if (el && isVisible(el)) return el;
-  }
-  return null;
+  const candidates: Element[] = [];
+  PREVIEW_SELECTORS.forEach((selector) => {
+    container.querySelectorAll(selector).forEach((el) => {
+      if (isVisible(el)) candidates.push(el);
+    });
+  });
+  if (!candidates.length) return null;
+  return candidates.reduce((best, current) => {
+    const bestRect = best.getBoundingClientRect();
+    const currentRect = current.getBoundingClientRect();
+    const bestArea = bestRect.width * bestRect.height;
+    const currentArea = currentRect.width * currentRect.height;
+    return currentArea > bestArea ? current : best;
+  });
 };
 
 export const extractMetadataLine = (container?: Element | null): string | undefined => {
@@ -182,6 +208,54 @@ export const extractGenresLine = (container?: Element | null): string | undefine
   const unique = Array.from(new Set(values));
   if (!unique.length) return undefined;
   return unique.slice(0, 3).join(" • ");
+};
+
+export const resolveTitleText = (
+  container?: Element | null,
+  fallback?: string
+): string | undefined => {
+  const cleanFallback = fallback ? fallback.replace(EPISODE_TITLE_PATTERN, "").trim() : undefined;
+  if (cleanFallback && !EPISODE_TITLE_PATTERN.test(cleanFallback)) {
+    return cleanFallback;
+  }
+
+  const primary = findPrimaryTitle(container);
+  if (primary) return primary;
+
+  if (fallback) return fallback;
+  return undefined;
+};
+
+export const findOverlayContainer = (
+  container?: Element | null,
+  preview?: Element | null
+): Element | null => {
+  const candidates = new Set<Element>();
+  const collect = (start?: Element | null) => {
+    let current: Element | null | undefined = start;
+    let depth = 0;
+    while (current && depth < 7) {
+      candidates.add(current);
+      current = current.parentElement;
+      depth += 1;
+    }
+  };
+  collect(container);
+  collect(preview);
+
+  let best: Element | null = null;
+  let bestArea = 0;
+  candidates.forEach((el) => {
+    if (!isVisible(el)) return;
+    const rect = el.getBoundingClientRect();
+    const area = rect.width * rect.height;
+    if (area > bestArea && rect.width > 240 && rect.height > 180) {
+      best = el;
+      bestArea = area;
+    }
+  });
+
+  return best ?? container ?? preview ?? null;
 };
 
 const findBestAnchorIn = (container: Element): HTMLAnchorElement | undefined => {
@@ -210,11 +284,12 @@ export const detectActiveTitleContext = (): {
       const candidate = extractFromAnchor(anchor, "container-anchor");
       if (candidate.netflixTitleId || candidate.titleText) {
         const titleText = candidate.titleText ?? extractTitleTextNear(container);
+        const resolvedTitle = resolveTitleText(container, titleText ?? candidate.titleText);
         return {
           candidate: {
-          ...candidate,
-          titleText,
-          year: parseYearFromText(titleText)
+            ...candidate,
+            titleText: resolvedTitle,
+            year: parseYearFromText(resolvedTitle ?? titleText)
           },
           container
         };
@@ -223,10 +298,11 @@ export const detectActiveTitleContext = (): {
 
     const titleText = extractTitleTextNear(container);
     if (titleText) {
+      const resolvedTitle = resolveTitleText(container, titleText);
       return {
         candidate: {
-          titleText,
-          year: parseYearFromText(titleText),
+          titleText: resolvedTitle ?? titleText,
+          year: parseYearFromText(resolvedTitle ?? titleText),
           source: "container-text"
         },
         container
@@ -239,10 +315,15 @@ export const detectActiveTitleContext = (): {
   ).find(isVisible);
   if (fallbackAnchor) {
     const candidate = extractFromAnchor(fallbackAnchor, "page-anchor");
+    const resolvedTitle = resolveTitleText(
+      fallbackAnchor.closest(CONTAINER_SELECTORS.join(",")) ?? fallbackAnchor.parentElement,
+      candidate.titleText
+    );
     return {
       candidate: {
         ...candidate,
-        year: parseYearFromText(candidate.titleText)
+        titleText: resolvedTitle ?? candidate.titleText,
+        year: parseYearFromText(resolvedTitle ?? candidate.titleText)
       },
       container: fallbackAnchor.closest(CONTAINER_SELECTORS.join(",")) ?? fallbackAnchor.parentElement
     };

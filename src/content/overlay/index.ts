@@ -111,6 +111,8 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       gap: 16px;
     }
     .nxl-title-section {
+      flex: 1;
+      min-width: 0;
       max-width: 70%;
     }
     .nxl-title {
@@ -148,6 +150,7 @@ const buildOverlay = (data: OverlayData): HTMLDivElement => {
       font-size: 12px;
       color: rgba(255, 255, 255, 0.8);
       white-space: nowrap;
+      flex-shrink: 0;
     }
     .nxl-dots {
       display: inline-flex;
@@ -395,14 +398,26 @@ const applyOverlayData = (data: OverlayData) => {
     "[data-field='metadata']"
   ) as HTMLDivElement | null;
   if (metaEl) {
-    metaEl.textContent = data.metadataLine ?? "TV-14 • 2 Seasons • HD";
+    if (data.metadataLine) {
+      metaEl.style.display = "block";
+      metaEl.textContent = data.metadataLine;
+    } else {
+      metaEl.style.display = "none";
+      metaEl.textContent = "";
+    }
   }
 
   const genresEl = currentHost?.shadowRoot?.querySelector(
     "[data-field='genres']"
   ) as HTMLDivElement | null;
   if (genresEl) {
-    genresEl.textContent = data.genresLine ?? "Genres";
+    if (data.genresLine) {
+      genresEl.style.display = "block";
+      genresEl.textContent = data.genresLine;
+    } else {
+      genresEl.style.display = "none";
+      genresEl.textContent = "";
+    }
   }
 
   const debugEl = currentHost?.shadowRoot?.querySelector(
@@ -452,8 +467,11 @@ export const updateOverlay = (
       ensureContainerPosition(container);
       container.appendChild(currentHost);
       if (previewRegion) {
-        const topPx = Math.max(120, previewRegion.top);
-        const bottomPx = Math.max(topPx + 80, previewRegion.bottom);
+        const topPx = Math.max(160, previewRegion.top - 8);
+        const bottomPx = Math.max(
+          topPx + Math.max(120, previewRegion.previewHeight),
+          previewRegion.bottom + 8
+        );
         currentHost.style.setProperty("--preview-top-px", `${topPx}px`);
         currentHost.style.setProperty("--preview-bottom-px", `${bottomPx}px`);
         currentHost.style.setProperty("--controls-height", `${previewRegion.controlsHeight}px`);
@@ -474,8 +492,11 @@ export const updateOverlay = (
   }
 
   if (previewRegion && currentHost) {
-    const topPx = Math.max(120, previewRegion.top);
-    const bottomPx = Math.max(topPx + 80, previewRegion.bottom);
+    const topPx = Math.max(160, previewRegion.top - 8);
+    const bottomPx = Math.max(
+      topPx + Math.max(120, previewRegion.previewHeight),
+      previewRegion.bottom + 8
+    );
     currentHost.style.setProperty("--preview-top-px", `${topPx}px`);
     currentHost.style.setProperty("--preview-bottom-px", `${bottomPx}px`);
     currentHost.style.setProperty("--controls-height", `${previewRegion.controlsHeight}px`);
