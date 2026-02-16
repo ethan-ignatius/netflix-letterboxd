@@ -103,28 +103,6 @@ const normalizeText = (value?: string | null): string | undefined => {
   return text.length ? text : undefined;
 };
 
-const collectVisibleText = (container: Element, selectors: string[]): string[] => {
-  const values: string[] = [];
-  selectors.forEach((selector) => {
-    container.querySelectorAll(selector).forEach((el) => {
-      if (!isVisible(el)) return;
-      const text = normalizeText(el.textContent);
-      if (!text) return;
-      values.push(text);
-    });
-  });
-  return values;
-};
-
-const isMetadataCandidate = (value: string) => {
-  const lower = value.toLowerCase();
-  if (lower.includes("episode")) return false;
-  if (lower.includes("min")) return false;
-  if (lower.includes("of ")) return false;
-  if (lower.includes("season") || lower.includes("hd") || lower.includes("tv-")) return true;
-  return true;
-};
-
 const parseTitleIdFromHref = (href?: string | null): string | undefined => {
   if (!href) return undefined;
   const match = href.match(/\/title\/(\d+)/);
@@ -263,7 +241,7 @@ export const hasMetadataSection = (root?: Element | null): boolean => {
   return nodes.some((node) => isVisible(node));
 };
 
-export const findExpandedRoot = (root?: Element | null): HTMLElement | null => {
+export const findExpandedRoot = (): HTMLElement | null => {
   const candidates = findExpandedContainers();
   const maxWidth = window.innerWidth * 0.85;
   const maxHeight = window.innerHeight * 0.6;
@@ -280,30 +258,6 @@ export const findExpandedRoot = (root?: Element | null): HTMLElement | null => {
   return null;
 };
 
-export const extractMetadataLine = (container?: Element | null): string | undefined => {
-  if (!container) return undefined;
-  const values = collectVisibleText(container, METADATA_SELECTORS)
-    .map((value) => value.replace(/\s+/g, " ").trim())
-    .filter((value) => value.length > 0)
-    .filter(isMetadataCandidate)
-    .filter((value) => !EPISODE_TIME_PATTERN.test(value))
-    .filter((value) => value.length <= 24);
-  const unique = Array.from(new Set(values));
-  if (!unique.length) return undefined;
-  return unique.slice(0, 3).join(" • ");
-};
-
-export const extractGenresLine = (container?: Element | null): string | undefined => {
-  if (!container) return undefined;
-  const values = collectVisibleText(container, GENRE_SELECTORS)
-    .map((value) => value.replace(/\s+/g, " ").trim())
-    .filter((value) => value.length > 0)
-    .filter((value) => value.length <= 24)
-    .filter((value) => !/episode|min/i.test(value));
-  const unique = Array.from(new Set(values));
-  if (!unique.length) return undefined;
-  return unique.slice(0, 3).join(" • ");
-};
 
 const isBannedTitleText = (text: string) => {
   if (NAV_BANNED_PATTERN.test(text)) return true;
@@ -335,7 +289,7 @@ export const extractDisplayTitle = (expandedRoot: HTMLElement): {
   const controls = findControlsRow(expandedRoot);
   const controlsTop = controls ? controls.getBoundingClientRect().top : undefined;
   const candidates = Array.from(expandedRoot.querySelectorAll(TITLE_LIKE_SELECTORS.join(",")));
-  let best: { el: Element; score: number; text: string } | null = null;
+  let best: { el: Element; score: number; text: string } | undefined;
   let rejectedCount = 0;
   const episodeNodes: Element[] = [];
 
@@ -454,49 +408,6 @@ export const resolveTitleText = (
   return undefined;
 };
 
-export const findOverlayContainer = (
-  container?: Element | null,
-  preview?: Element | null
-): Element | null => {
-  const candidates = new Set<Element>();
-  const collect = (start?: Element | null) => {
-    let current: Element | null | undefined = start;
-    let depth = 0;
-    while (current && depth < 7) {
-      candidates.add(current);
-      current = current.parentElement;
-      depth += 1;
-    }
-  };
-  collect(container);
-  collect(preview);
-
-  let best: Element | null = null;
-  let bestArea = 0;
-  const maxWidth = window.innerWidth * 0.85;
-  const maxHeight = window.innerHeight * 0.6;
-  candidates.forEach((el) => {
-    if (!isVisible(el)) return;
-    const rect = el.getBoundingClientRect();
-    const area = rect.width * rect.height;
-    if (rect.width > maxWidth || rect.height > maxHeight) return;
-    if (area > bestArea && rect.width > 240 && rect.height > 180) {
-      best = el;
-      bestArea = area;
-    }
-  });
-
-  if (best) return best;
-  const isValid = (el?: Element | null) => {
-    if (!el) return false;
-    const rect = el.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return false;
-    return rect.width <= maxWidth && rect.height <= maxHeight;
-  };
-  if (isValid(container)) return container ?? null;
-  if (isValid(preview)) return preview ?? null;
-  return null;
-};
 
 const findBestAnchorIn = (container: Element): HTMLAnchorElement | undefined => {
   const anchors = Array.from(container.querySelectorAll<HTMLAnchorElement>(TITLE_ANCHOR_SELECTOR));
@@ -588,6 +499,4 @@ export const detectActiveTitleContext = (): {
   return { candidate: null, container: null };
 };
 
-export const detectActiveTitle = (): ActiveTitleCandidate | null => {
-  return detectActiveTitleContext().candidate;
-};
+// Intentionally no default export.

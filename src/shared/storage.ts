@@ -1,30 +1,29 @@
-import { log, warn } from "./log";
-import type { LetterboxdExport, LetterboxdIndex, LetterboxdStats } from "./types";
+import { log, warn } from "./logger";
+import { STORAGE_KEYS } from "./constants";
+import type { LetterboxdIndex, LetterboxdStats } from "./types";
 
 export interface StorageState {
-  letterboxdExport?: LetterboxdExport;
-  lastImportAt?: string;
-  overlayEnabled?: boolean;
-  tmdbApiKey?: string;
-  tmdbCache?: Record<string, unknown>;
-  letterboxdIndex?: LetterboxdIndex;
-  letterboxdStats?: LetterboxdStats;
-  "lb_index_v1"?: LetterboxdIndex;
-  "lb_stats_v1"?: LetterboxdStats;
+  [STORAGE_KEYS.OVERLAY_ENABLED]?: boolean;
+  [STORAGE_KEYS.TMDB_API_KEY]?: string;
+  [STORAGE_KEYS.TMDB_CACHE]?: Record<string, unknown>;
+  [STORAGE_KEYS.TMDB_FEATURE_CACHE]?: Record<string, unknown>;
+  [STORAGE_KEYS.MATCH_PROFILE]?: Record<string, unknown>;
+  [STORAGE_KEYS.LETTERBOXD_INDEX]?: LetterboxdIndex;
+  [STORAGE_KEYS.LETTERBOXD_STATS]?: LetterboxdStats;
+  [STORAGE_KEYS.LAST_IMPORT_AT]?: string;
 }
 
 export const getStorage = async (): Promise<StorageState> => {
   log("Loading storage state");
   return chrome.storage.local.get([
-    "letterboxdExport",
-    "lastImportAt",
-    "overlayEnabled",
-    "tmdbApiKey",
-    "tmdbCache",
-    "letterboxdIndex",
-    "letterboxdStats",
-    "lb_index_v1",
-    "lb_stats_v1"
+    STORAGE_KEYS.OVERLAY_ENABLED,
+    STORAGE_KEYS.TMDB_API_KEY,
+    STORAGE_KEYS.TMDB_CACHE,
+    STORAGE_KEYS.TMDB_FEATURE_CACHE,
+    STORAGE_KEYS.MATCH_PROFILE,
+    STORAGE_KEYS.LETTERBOXD_INDEX,
+    STORAGE_KEYS.LETTERBOXD_STATS,
+    STORAGE_KEYS.LAST_IMPORT_AT
   ]) as Promise<StorageState>;
 };
 

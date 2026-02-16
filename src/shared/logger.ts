@@ -1,4 +1,6 @@
-export const DEBUG = import.meta.env.DEV;
+import { DEBUG } from "./constants";
+
+export { DEBUG };
 
 export const log = (...args: unknown[]) => {
   if (!DEBUG) return;

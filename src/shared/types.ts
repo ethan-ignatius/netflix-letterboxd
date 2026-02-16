@@ -1,14 +1,3 @@
-export type StorageKeys =
-  | "letterboxdExport"
-  | "lastImportAt"
-  | "overlayEnabled"
-  | "tmdbApiKey"
-  | "tmdbCache"
-  | "letterboxdIndex"
-  | "letterboxdStats"
-  | "lb_index_v1"
-  | "lb_stats_v1";
-
 export type LetterboxdIndexEntry = {
   r?: number;
   w?: 1;

@@ -1,5 +1,7 @@
 import { getStorage } from "../shared/storage";
-import { log } from "../shared/log";
+import { log } from "../shared/logger";
+import { STORAGE_KEYS } from "../shared/constants";
+import { buildLetterboxdKey } from "../shared/normalize";
 import { unzipSync, strFromU8 } from "fflate";
 import type { LetterboxdIndex, LetterboxdStats } from "../shared/types";
 
@@ -23,14 +25,6 @@ let helpModalEl: HTMLDivElement | null = null;
 let lastFocusedEl: HTMLElement | null = null;
 
 const HELP_URL = "https://letterboxd.com/settings/data/";
-
-const normalizeTitle = (title: string) =>
-  title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-
-const buildKey = (title: string, year?: number) => {
-  const normalized = normalizeTitle(title);
-  return year ? `${normalized}|${year}` : normalized;
-};
 
 const parseCsv = (text: string): string[][] => {
   const rows: string[][] = [];
@@ -115,7 +109,7 @@ const parseRatings = (csv: string, index: LetterboxdIndex) => {
     const ratingValue = parseFloat(getField(row, ratingIdx));
     if (Number.isNaN(ratingValue)) return;
 
-    const key = buildKey(title, year);
+    const key = buildLetterboxdKey(title, year);
     if (!index[key]) index[key] = {};
     index[key].r = ratingValue;
     count += 1;
@@ -136,7 +130,7 @@ const parseWatchlist = (csv: string, index: LetterboxdIndex) => {
     const title = getField(row, nameIdx);
     if (!title) return;
     const year = parseYear(getField(row, yearIdx));
-    const key = buildKey(title, year);
+    const key = buildLetterboxdKey(title, year);
     if (!index[key]) index[key] = {};
     index[key].w = 1;
     count += 1;
@@ -286,18 +280,18 @@ const renderPopup = async () => {
   const state = await getStorage();
 
   if (overlayToggle) {
-    overlayToggle.checked = state.overlayEnabled ?? true;
+    overlayToggle.checked = state[STORAGE_KEYS.OVERLAY_ENABLED] ?? true;
   }
 
   if (tmdbKeyInput) {
-    tmdbKeyInput.value = state.tmdbApiKey ?? "";
+    tmdbKeyInput.value = state[STORAGE_KEYS.TMDB_API_KEY] ?? "";
   }
 
   if (keyStatus) {
-    keyStatus.textContent = state.tmdbApiKey ? "Key saved." : "Not set.";
+    keyStatus.textContent = state[STORAGE_KEYS.TMDB_API_KEY] ? "Key saved." : "Not set.";
   }
 
-  const stats = state["lb_stats_v1"];
+  const stats = state[STORAGE_KEYS.LETTERBOXD_STATS];
   if (zipStatus) {
     if (stats) {
       zipStatus.textContent = `${stats.ratingsCount} ratings • ${stats.watchlistCount} watchlist`;
@@ -319,26 +313,26 @@ const bindListeners = () => {
 
   overlayToggle?.addEventListener("change", async () => {
     const enabled = overlayToggle.checked;
-    await chrome.storage.local.set({ overlayEnabled: enabled });
+    await chrome.storage.local.set({ [STORAGE_KEYS.OVERLAY_ENABLED]: enabled });
     log("Overlay toggle updated", { enabled });
   });
 
   saveKeyButton?.addEventListener("click", async () => {
     const value = tmdbKeyInput?.value.trim();
     if (!value) {
-      await chrome.storage.local.remove("tmdbApiKey");
+      await chrome.storage.local.remove(STORAGE_KEYS.TMDB_API_KEY);
       if (keyStatus) keyStatus.textContent = "Not set.";
       log("TMDb key cleared");
       return;
     }
 
-    await chrome.storage.local.set({ tmdbApiKey: value });
+    await chrome.storage.local.set({ [STORAGE_KEYS.TMDB_API_KEY]: value });
     if (keyStatus) keyStatus.textContent = "Key saved.";
     log("TMDb key saved");
   });
 
   clearCacheButton?.addEventListener("click", async () => {
-    await chrome.storage.local.remove("tmdbCache");
+    await chrome.storage.local.remove(STORAGE_KEYS.TMDB_CACHE);
     log("TMDb cache cleared");
   });
 
@@ -406,9 +400,9 @@ const bindListeners = () => {
       };
 
       await chrome.storage.local.set({
-        lb_index_v1: index,
-        lb_stats_v1: stats,
-        lastImportAt: stats.importedAt
+        [STORAGE_KEYS.LETTERBOXD_INDEX]: index,
+        [STORAGE_KEYS.LETTERBOXD_STATS]: stats,
+        [STORAGE_KEYS.LAST_IMPORT_AT]: stats.importedAt
       });
 
       log("Letterboxd ZIP imported", { ratingsCount, watchlistCount });
@@ -423,7 +417,11 @@ const bindListeners = () => {
   });
 
   clearLetterboxd?.addEventListener("click", async () => {
-    await chrome.storage.local.remove(["lb_index_v1", "lb_stats_v1", "lastImportAt"]);
+    await chrome.storage.local.remove([
+      STORAGE_KEYS.LETTERBOXD_INDEX,
+      STORAGE_KEYS.LETTERBOXD_STATS,
+      STORAGE_KEYS.LAST_IMPORT_AT
+    ]);
     resetBanners();
     showSuccess("Cleared Letterboxd data.");
     await renderPopup();

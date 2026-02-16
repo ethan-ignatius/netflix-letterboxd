@@ -1,44 +1,33 @@
 # Netflix + Letterboxd (Chrome Extension)
 
 ## Overview
-Manifest V3 Chrome extension scaffold using TypeScript + Vite. Content script injects a Shadow DOM overlay on Netflix pages. All data is stored locally via `chrome.storage.local` and is intended to be populated by a user-uploaded Letterboxd export ZIP.
+Netflix + Letterboxd is a Manifest V3 Chrome extension that overlays Letterboxd-informed insights on Netflix expanded title cards. It uses your Letterboxd export ZIP for local personalization and TMDb for community ratings.
 
-## Scripts
-- `npm run dev` - build in watch mode
-- `npm run build` - production build to `dist/`
-- `npm run lint` - run ESLint
-- `npm run typecheck` - run TypeScript typecheck
+## Architecture
+- Content script detects the expanded Netflix jawbone card and injects a Shadow DOM UI.
+- Background service worker resolves titles via TMDb, merges Letterboxd signals, and computes match scores.
+- Popup handles configuration and Letterboxd ZIP import.
 
-## Build And Load Unpacked Extension
-1. `npm install`
-2. `npm run build`
-3. Open Chrome and go to `chrome://extensions/`
-4. Enable **Developer mode** (top right)
-5. Click **Load unpacked**
-6. Select the `dist` folder in this project
+See `docs/ARCHITECTURE.md` for full details.
 
-## Demo Steps
-1. Build and load the extension (see steps above).
-2. Open the extension popup and enable the overlay.
-3. Paste your TMDb API key and save.
-4. Upload your Letterboxd export ZIP.
-5. Navigate to Netflix and hover an expanded title card to see the overlay.
+## Local Development
+```bash
+npm install
+npm run build
+```
 
-## Screenshots
-- Coming soon
+Load unpacked:
+1. Open `chrome://extensions/`.
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select `dist`.
 
-## Project Structure
-- `src/content/index.ts` - content script
-- `src/background/index.ts` - service worker
-- `src/popup/index.html` - popup HTML
-- `src/popup/main.ts` - popup logic
-- `src/popup/style.css` - popup styles
-- `src/shared/types.ts` - shared types
-- `src/shared/storage.ts` - storage helpers
-- `src/shared/log.ts` - debug logging
-- `manifest.json` - extension manifest
+For watch builds:
+```bash
+npm run dev
+```
 
-## Privacy
-- All Letterboxd data stays in `chrome.storage.local` on your machine.
-- The TMDb API key is stored locally in `chrome.storage.local`.
-- No tracking or analytics are included.
+## Demo
+1. Open the extension popup and enable the overlay.
+2. Paste your TMDb API key and save.
+3. Upload your Letterboxd export ZIP.
+4. Hover an expanded Netflix title card to see ratings, match score, and badges.

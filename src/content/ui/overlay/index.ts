@@ -7,7 +7,7 @@ export interface OverlayData {
 
 const TOP_SECTION_ID = "nxlb-top-section";
 
-const buildTopSection = (data: OverlayData): HTMLDivElement => {
+const buildTopSection = (): HTMLDivElement => {
   const host = document.createElement("div");
   host.id = TOP_SECTION_ID;
   host.style.display = "block";
@@ -199,7 +199,7 @@ const applyTopSectionData = (data: OverlayData) => {
   ) as HTMLDivElement | null;
   if (becauseEl) {
     becauseEl.textContent = data.matchExplanation
-      ? `Because you like: ${data.matchExplanation.replace(/^Because you like\\s*/i, "")}`
+      ? `Because you like: ${data.matchExplanation.replace(/^Because you like\s*/i, "")}`
       : "Because you like: —";
   }
 };
@@ -209,7 +209,7 @@ export const injectTopSection = (expandedRoot: HTMLElement, data: OverlayData): 
   if (isNewRoot) {
     if (currentHost) currentHost.remove();
     currentRoot = expandedRoot;
-    currentHost = buildTopSection(data);
+    currentHost = buildTopSection();
     expandedRoot.insertBefore(currentHost, expandedRoot.firstChild);
     requestAnimationFrame(() => {
       currentHost?.classList.add("nxl-visible");

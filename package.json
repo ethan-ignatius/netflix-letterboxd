@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite build --watch --config vite.content.config.ts\" \"vite build --watch --config vite.app.config.ts\"",
-    "build": "vite build --config vite.content.config.ts && vite build --config vite.app.config.ts && cpx manifest.json dist",
+    "dev": "concurrently \"vite build --watch --mode content\" \"vite build --watch --mode app\"",
+    "build": "vite build --mode content && vite build --mode app && cpx config/manifest.json dist",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
