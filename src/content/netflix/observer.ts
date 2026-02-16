@@ -1,17 +1,22 @@
 import { log, DEBUG } from "../../shared/logger";
 import { STORAGE_KEYS } from "../../shared/constants";
 import { getStorage, setStorage } from "../../shared/storage";
-import type { ResolveTitleMessage, TitleResolvedMessage } from "../../shared/types";
+import { buildLetterboxdKey } from "../../shared/normalize";
+import type {
+  LetterboxdIndexUpdatedAckMessage,
+  ResolveTitleMessage,
+  TitleResolvedMessage
+} from "../../shared/types";
 import {
   detectActiveTitleContext,
   extractDisplayTitle,
   findExpandedRoot,
-  findOverlayAnchor,
   findPreviewElement,
   getRawTitleText,
-  normalizeNetflixTitle
+  normalizeNetflixTitle,
+  EXPANDED_CONTAINER_SELECTOR
 } from "./selectors";
-import { injectTopSection, removeTopSection, type OverlayData } from "../ui/overlay";
+import { createOverlayManager } from "../ui/overlay";
 import { setBadgeVisible } from "../ui/badge";
 
 const TOGGLE_COMBO = {
@@ -20,15 +25,32 @@ const TOGGLE_COMBO = {
   key: "l"
 };
 const OBSERVER_DEBOUNCE_MS = 250;
+const WATCHDOG_INTERVAL_MS = 2000;
 const HERO_WIDTH_THRESHOLD = 0.85;
 const HERO_HEIGHT_THRESHOLD = 0.6;
+
+const overlayManager = createOverlayManager();
 
 let overlayEnabled = true;
 let lastActiveKey = "";
 let lastContainer: Element | null = null;
 let debounceTimer: number | undefined;
+let watchdogTimer: number | undefined;
 let lastRequestId = "";
 let lastOutlined: HTMLElement | null = null;
+let playbackActive = false;
+let lastResolvedPayload: TitleResolvedMessage["payload"] | null = null;
+
+type NxlWindow = Window & {
+  __nxlBooted?: boolean;
+  __nxlDebug?: {
+    getIndex: () => Promise<Record<string, unknown>>;
+    forceRerender: () => void;
+    lastResolved: () => TitleResolvedMessage["payload"] | null;
+  };
+};
+
+const getNxlWindow = () => window as NxlWindow;
 
 const describeElement = (el: Element | null) => {
   if (!el) return "none";
@@ -48,34 +70,6 @@ const describeElement = (el: Element | null) => {
   const dataUia = (el as HTMLElement).getAttribute?.("data-uia");
   if (dataUia) parts.push(`[data-uia="${dataUia}"]`);
   return parts.join("");
-};
-
-const isWatchPage = () => window.location.pathname.startsWith("/watch");
-
-const hasMainPlayerVideo = () => {
-  const videos = Array.from(document.querySelectorAll("video"));
-  return videos.some((video) => {
-    const rect = video.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return false;
-    const widthRatio = rect.width / window.innerWidth;
-    const heightRatio = rect.height / window.innerHeight;
-    return widthRatio > 0.85 || heightRatio > 0.6;
-  });
-};
-
-const hasEpisodeHeaderVisible = () => {
-  const candidates = Array.from(
-    document.querySelectorAll("h1, h2, h3, [data-uia*='episode'], [class*='episode']")
-  );
-  return candidates.some((el) => {
-    if (el instanceof HTMLElement) {
-      const rect = el.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return false;
-      const text = el.textContent ?? "";
-      return /episode/i.test(text);
-    }
-    return false;
-  });
 };
 
 const isHeroSized = (el: Element | null) => {
@@ -101,208 +95,241 @@ const updateDebugOutline = (container: HTMLElement | null) => {
   }
 };
 
-const serializeCandidate = (
-  candidate: ReturnType<typeof detectActiveTitleContext>["candidate"]
-): string => {
-  if (!candidate) return "";
-  return [
-    candidate.netflixTitleId ?? "",
-    candidate.titleText ?? "",
-    candidate.year ?? "",
-    candidate.href ?? ""
-  ].join("|");
+const isPlaybackRoute = () => window.location.pathname.includes("/watch/");
+
+const isPlayingMainVideo = () => {
+  const videos = Array.from(document.querySelectorAll("video"));
+  return videos.some((video) => {
+    if (video.paused || video.ended) return false;
+    const rect = video.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    const widthRatio = rect.width / window.innerWidth;
+    const heightRatio = rect.height / window.innerHeight;
+    return widthRatio > 0.85 || heightRatio > 0.6;
+  });
 };
 
-const applyOverlayState = async (enabled: boolean) => {
-  overlayEnabled = enabled;
-  if (!enabled) {
-    updateOverlay(null, null);
+const hasPlayerContainer = () => {
+  return Boolean(
+    document.querySelector(
+      "[data-uia*='video-player'], [class*='VideoPlayer'], [class*='watch-video'], [data-uia*='player']"
+    )
+  );
+};
+
+const detectPlaybackActive = () => {
+  if (isPlaybackRoute()) return true;
+  if (isPlayingMainVideo()) return true;
+  if (hasPlayerContainer() && isPlayingMainVideo()) return true;
+  return false;
+};
+
+const updatePlaybackState = () => {
+  const next = detectPlaybackActive();
+  if (next === playbackActive) return;
+  playbackActive = next;
+
+  if (playbackActive) {
+    setBadgeVisible(false);
+    log("BADGE_HIDDEN_PLAYBACK");
+    overlayManager.unmount();
+  } else {
+    if (overlayEnabled) {
+      setBadgeVisible(true);
+      log("BADGE_SHOWN");
+      log("BROWSE_MODE_DETECTED");
+    }
   }
-  setBadgeVisible(enabled);
 };
 
-const updateOverlay = (container: HTMLElement | null, data: OverlayData | null) => {
-  if (!container || !overlayEnabled) {
-    removeTopSection();
+const setBadgeForState = () => {
+  if (!overlayEnabled) {
+    setBadgeVisible(false);
     return;
   }
-  injectTopSection(container, data ?? {});
+  if (!playbackActive) {
+    setBadgeVisible(true);
+    log("BADGE_SHOWN");
+  }
 };
 
-const emitActiveTitleChange = () => {
+const serializeCandidateKey = (titleText?: string, year?: number, href?: string) => {
+  return [titleText ?? "", year ?? "", href ?? ""].join("|");
+};
+
+const parseYearFromText = (text?: string) => {
+  if (!text) return undefined;
+  const match = text.match(/(19\d{2}|20\d{2})/);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  return Number.isNaN(year) ? undefined : year;
+};
+
+const findHoveredExpandedRoot = () => {
+  const hovered = Array.from(document.querySelectorAll(":hover"));
+  if (!hovered.length) return null;
+  const candidates = hovered
+    .map((el) => (el as Element).closest(EXPANDED_CONTAINER_SELECTOR) ?? (el as Element))
+    .filter(Boolean) as Element[];
+  let best: HTMLElement | null = null;
+  let bestArea = 0;
+  candidates.forEach((candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const area = rect.width * rect.height;
+    if (area > bestArea) {
+      bestArea = area;
+      best = candidate as HTMLElement;
+    }
+  });
+  return best;
+};
+
+const attemptResolve = (reason: string) => {
   if (!overlayEnabled) return;
+  updatePlaybackState();
+  if (playbackActive) return;
 
-  if (isWatchPage()) {
-    if (DEBUG) log("Overlay skipped", { reason: "watch-page" });
-    removeTopSection();
-    setBadgeVisible(false);
-    return;
-  }
+  if (DEBUG) log("OVERLAY_MOUNT_ATTEMPT", { reason });
 
-  if (hasMainPlayerVideo()) {
-    if (DEBUG) log("Overlay skipped", { reason: "main-player-video" });
-    removeTopSection();
-    setBadgeVisible(false);
-    return;
-  }
+  const strategies: Array<{
+    name: string;
+    root: HTMLElement | null;
+    candidate?: ReturnType<typeof detectActiveTitleContext>["candidate"] | null;
+  }> = [];
 
-  if (hasEpisodeHeaderVisible()) {
-    if (DEBUG) log("Overlay skipped", { reason: "episode-header-visible" });
-    removeTopSection();
-    setBadgeVisible(false);
-    return;
-  }
+  const detected = detectActiveTitleContext();
+  const detectedRoot = findExpandedRoot() ?? (detected.container as HTMLElement | null);
+  strategies.push({ name: "detect-active", root: detectedRoot, candidate: detected.candidate });
 
-  const { candidate, container } = detectActiveTitleContext();
-  const previewEl = findPreviewElement(container);
-  const expandedRoot = findExpandedRoot() ?? (container as HTMLElement | null);
-  const anchor = findOverlayAnchor(expandedRoot ?? container);
-  const anchorInRoot = expandedRoot?.querySelector("a[href^='/title/']") as
-    | HTMLAnchorElement
-    | null;
-  if (anchorInRoot) {
-    const href = anchorInRoot.getAttribute("href") ?? undefined;
-    const match = href?.match(/\/title\/(\d+)/);
-    if (match) candidate && (candidate.netflixTitleId = match[1]);
-    if (href) candidate && (candidate.href = href);
-  }
-  if (!expandedRoot || !previewEl) {
+  const expandedRoot = findExpandedRoot();
+  strategies.push({ name: "expanded-root", root: expandedRoot, candidate: null });
+
+  const hoveredRoot = findHoveredExpandedRoot();
+  strategies.push({ name: "hovered", root: hoveredRoot, candidate: null });
+
+  for (const strategy of strategies) {
+    const root = strategy.root;
+    if (!root) continue;
+    if (isHeroSized(root)) continue;
+    const previewEl = findPreviewElement(root);
+    if (!previewEl) continue;
+
+    const anchorInRoot = root.querySelector("a[href^='/title/']") as HTMLAnchorElement | null;
+    const href = anchorInRoot?.getAttribute("href") ?? undefined;
+    const idMatch = href?.match(/\/title\/(\d+)/);
+    const netflixTitleId = idMatch?.[1] ?? strategy.candidate?.netflixTitleId;
+
+    const displayTitle = extractDisplayTitle(root);
+    const resolvedTitle = displayTitle.title ?? strategy.candidate?.titleText;
+    if (!resolvedTitle) {
+      if (DEBUG) log("OVERLAY_MOUNT_FAILED", { reason: "no-display-title", strategy: strategy.name });
+      continue;
+    }
+
+    const normalizedTitle = normalizeNetflixTitle(resolvedTitle) ?? resolvedTitle;
+    const year = parseYearFromText(normalizedTitle);
+    const key = serializeCandidateKey(normalizedTitle, year, href);
+
+    if (key === lastActiveKey && root === lastContainer) {
+      if (DEBUG) log("OVERLAY_MOUNT_SUCCESS", { strategy: strategy.name, reused: true });
+      return;
+    }
+
+    lastActiveKey = key;
+    lastContainer = root;
+    updateDebugOutline(root);
+
     if (DEBUG) {
-      log("Overlay skipped", {
-        reason: "no-overlay-container",
-        anchor: describeElement(anchor),
-        container: describeElement(expandedRoot)
+      const rawTitle = getRawTitleText(root);
+      log("OVERLAY_MOUNT_SUCCESS", {
+        strategy: strategy.name,
+        titleText: normalizedTitle,
+        href,
+        netflixTitleId,
+        rawTitle,
+        container: describeElement(root),
+        rejectedTitleCandidates: displayTitle.rejectedCount,
+        chosenTitleElement: displayTitle.chosen
+          ? displayTitle.chosen.outerHTML.slice(0, 200)
+          : undefined
       });
     }
-    removeTopSection();
-    updateDebugOutline(null);
-    setBadgeVisible(false);
-    return;
-  }
-  if (isHeroSized(anchor) || isHeroSized(expandedRoot)) {
-    if (DEBUG) {
-      log("Overlay skipped", {
-        reason: "hero-sized-anchor",
-        anchor: describeElement(anchor),
-        container: describeElement(expandedRoot)
-      });
-    }
-    removeTopSection();
-    updateDebugOutline(null);
-    setBadgeVisible(false);
-    return;
-  }
-  updateDebugOutline(expandedRoot);
-  if (!candidate) {
-    try {
-      removeTopSection();
-    } catch (error) {
-      log("Overlay cleanup failed", { error });
-    }
-    updateDebugOutline(null);
-    lastActiveKey = "";
-    lastContainer = null;
-    return;
-  }
 
-  const displayTitle = extractDisplayTitle(expandedRoot);
-  if (!displayTitle.title) {
-    if (DEBUG) {
-      log("Overlay skipped", {
-        reason: "no-display-title",
-        rejectedTitleCandidates: displayTitle.rejectedCount
-      });
-    }
-    removeTopSection();
-    updateDebugOutline(null);
-    setBadgeVisible(false);
-    return;
-  }
-  const resolvedTitle = displayTitle.title;
-  const key = serializeCandidate({ ...candidate, titleText: resolvedTitle });
-  if (key === lastActiveKey && expandedRoot === lastContainer) return;
-  lastActiveKey = key;
-  lastContainer = expandedRoot;
-  if (DEBUG) {
-    const rawTitle = getRawTitleText(expandedRoot ?? container);
-    const normalizedTitle = normalizeNetflixTitle(rawTitle ?? candidate.titleText);
-    log("Active title changed", {
-      ...candidate,
-      anchor: describeElement(anchor),
-      container: describeElement(expandedRoot),
-      expandedRootSnippet: expandedRoot?.outerHTML.slice(0, 200),
-      rawTitle,
-      normalizedTitle,
-      chosenTitle: displayTitle.title,
-      rejectedTitleCandidates: displayTitle.rejectedCount,
-      chosenTitleElement: displayTitle.chosen
-        ? displayTitle.chosen.outerHTML.slice(0, 200)
-        : undefined,
-      at: new Date().toISOString()
-    });
-  }
+    overlayManager.mount(root);
+    overlayManager.update({});
 
-  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  lastRequestId = requestId;
-  const message: ResolveTitleMessage = {
-    type: "RESOLVE_TITLE",
-    requestId,
-    payload: {
-      netflixTitleId: candidate.netflixTitleId,
-      titleText: resolvedTitle,
-      year: candidate.year,
-      href: candidate.href
-    }
-  };
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    lastRequestId = requestId;
+    const message: ResolveTitleMessage = {
+      type: "RESOLVE_TITLE",
+      requestId,
+      payload: {
+        netflixTitleId,
+        titleText: normalizedTitle,
+        year,
+        href
+      }
+    };
 
-  chrome.runtime
-    .sendMessage(message)
-    .then((response: TitleResolvedMessage) => {
-      if (response?.type !== "TITLE_RESOLVED") return;
-      if (response.requestId !== lastRequestId) return;
-      log("Title resolved", { requestId, response });
+    chrome.runtime
+      .sendMessage(message)
+      .then((response: TitleResolvedMessage) => {
+        if (response?.type !== "TITLE_RESOLVED") return;
+        if (response.requestId !== lastRequestId) return;
+        lastResolvedPayload = response.payload;
+        log("Title resolved", { requestId, response });
 
-      try {
-        const didInject = injectTopSection(expandedRoot, {
+        overlayManager.update({
           communityRating: response.payload.tmdbVoteAverage,
           ratingCount: response.payload.tmdbVoteCount,
           matchScore: response.payload.matchScore,
-          matchExplanation: response.payload.matchExplanation
+          matchExplanation: response.payload.matchExplanation,
+          inWatchlist: response.payload.inWatchlist,
+          userRating: response.payload.userRating
         });
-        if (DEBUG && didInject) {
-          log("Injected top section", { container: describeElement(expandedRoot) });
-        }
-        setBadgeVisible(true);
-      } catch (error) {
-        log("Overlay update failed", { error });
-      }
-    })
-    .catch((err) => {
-      log("Title resolve failed", { requestId, err });
-    });
 
-  try {
-    const didInject = injectTopSection(expandedRoot, {});
-    if (DEBUG && didInject) {
-      log("Injected top section", { container: describeElement(expandedRoot) });
-    }
-    setBadgeVisible(true);
-  } catch (error) {
-    log("Overlay update failed", { error });
+        if (DEBUG) {
+          if (
+            response.payload.inWatchlist === undefined &&
+            response.payload.userRating === undefined
+          ) {
+            const keyForLookup = buildLetterboxdKey(normalizedTitle, year);
+            chrome.storage.local.get([STORAGE_KEYS.LETTERBOXD_INDEX]).then((data) => {
+              if (!data[STORAGE_KEYS.LETTERBOXD_INDEX]) {
+                log("LB_MATCH_NOT_FOUND", { reason: "no-index", key: keyForLookup });
+              } else if (!year) {
+                log("LB_MATCH_NOT_FOUND", { reason: "missing-year", key: keyForLookup });
+              } else {
+                log("LB_MATCH_NOT_FOUND", { reason: "no-key", key: keyForLookup });
+              }
+            });
+          }
+        }
+      })
+      .catch((err) => {
+        log("Title resolve failed", { requestId, err });
+      });
+
+    return;
   }
+
+  if (DEBUG) log("OVERLAY_MOUNT_FAILED", { reason: "no-strategy" });
+  overlayManager.unmount();
+  updateDebugOutline(null);
 };
 
-const scheduleActiveTitleCheck = () => {
+const scheduleResolve = (reason: string) => {
   if (debounceTimer) window.clearTimeout(debounceTimer);
   debounceTimer = window.setTimeout(() => {
-    emitActiveTitleChange();
+    attemptResolve(reason);
   }, OBSERVER_DEBOUNCE_MS);
 };
 
 const observeTitleChanges = () => {
   const observer = new MutationObserver(() => {
     try {
-      scheduleActiveTitleCheck();
+      scheduleResolve("mutation");
     } catch (error) {
       log("Mutation observer failed", { error });
     }
@@ -318,7 +345,7 @@ const observeTitleChanges = () => {
     "pointerover",
     () => {
       try {
-        scheduleActiveTitleCheck();
+        scheduleResolve("pointer");
       } catch (error) {
         log("Pointer observer failed", { error });
       }
@@ -329,22 +356,39 @@ const observeTitleChanges = () => {
     "focusin",
     () => {
       try {
-        scheduleActiveTitleCheck();
+        scheduleResolve("focus");
       } catch (error) {
         log("Focus observer failed", { error });
       }
     },
     true
   );
-  scheduleActiveTitleCheck();
+
+  if (watchdogTimer) window.clearInterval(watchdogTimer);
+  watchdogTimer = window.setInterval(() => {
+    if (!overlayEnabled) return;
+    updatePlaybackState();
+    if (playbackActive) return;
+    if (!overlayManager.isMounted()) {
+      attemptResolve("watchdog");
+    }
+  }, WATCHDOG_INTERVAL_MS);
+
+  scheduleResolve("init");
 };
 
 const toggleOverlay = async () => {
   const state = await getStorage();
   const next = !(state[STORAGE_KEYS.OVERLAY_ENABLED] ?? true);
   await setStorage({ [STORAGE_KEYS.OVERLAY_ENABLED]: next });
-  await applyOverlayState(next);
-  if (next) scheduleActiveTitleCheck();
+  overlayEnabled = next;
+  if (!next) {
+    overlayManager.unmount();
+    setBadgeVisible(false);
+  } else {
+    setBadgeForState();
+    scheduleResolve("toggle");
+  }
   log("Overlay toggled", { enabled: next });
 };
 
@@ -359,10 +403,41 @@ const handleKeydown = (event: KeyboardEvent) => {
   }
 };
 
+const bindRuntimeMessages = () => {
+  chrome.runtime.onMessage.addListener((message: LetterboxdIndexUpdatedAckMessage) => {
+    if (message?.type === "LB_INDEX_UPDATED_ACK") {
+      log("LB_INDEX_UPDATED_ACK", message.payload);
+      scheduleResolve("lb-index-updated");
+    }
+  });
+};
+
+const setDebugHook = () => {
+  const win = getNxlWindow();
+  win.__nxlDebug = {
+    getIndex: async () => chrome.storage.local.get(STORAGE_KEYS.LETTERBOXD_INDEX),
+    forceRerender: () => overlayManager.renderLast(),
+    lastResolved: () => lastResolvedPayload
+  };
+};
+
 export const initNetflixObserver = async () => {
+  const win = getNxlWindow();
+  if (win.__nxlBooted) return;
+  win.__nxlBooted = true;
+
   const state = await getStorage();
-  const enabled = state[STORAGE_KEYS.OVERLAY_ENABLED] ?? true;
-  await applyOverlayState(enabled);
+  overlayEnabled = state[STORAGE_KEYS.OVERLAY_ENABLED] ?? true;
+
+  updatePlaybackState();
+  if (overlayEnabled && !playbackActive) {
+    setBadgeVisible(true);
+    log("BADGE_SHOWN");
+    log("BROWSE_MODE_DETECTED");
+  }
+
   observeTitleChanges();
+  bindRuntimeMessages();
+  setDebugHook();
   window.addEventListener("keydown", handleKeydown);
 };

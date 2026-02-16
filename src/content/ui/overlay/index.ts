@@ -3,6 +3,8 @@ export interface OverlayData {
   ratingCount?: number;
   matchScore?: number;
   matchExplanation?: string;
+  inWatchlist?: boolean;
+  userRating?: number;
 }
 
 const TOP_SECTION_ID = "nxlb-top-section";
@@ -103,6 +105,22 @@ const buildTopSection = (): HTMLDivElement => {
       color: rgba(255, 255, 255, 0.7);
       font-size: 14px;
     }
+    .nxl-badges {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .nxl-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.06);
+    }
   `;
 
   const section = document.createElement("div");
@@ -143,9 +161,14 @@ const buildTopSection = (): HTMLDivElement => {
   because.dataset.field = "because";
   because.textContent = "Because you like: —";
 
+  const badges = document.createElement("div");
+  badges.className = "nxl-badges";
+  badges.dataset.field = "badges";
+
   body.appendChild(communityRating);
   body.appendChild(match);
   body.appendChild(because);
+  body.appendChild(badges);
 
   section.appendChild(header);
   section.appendChild(body);
@@ -156,9 +179,6 @@ const buildTopSection = (): HTMLDivElement => {
   return host;
 };
 
-let currentRoot: HTMLElement | null = null;
-let currentHost: HTMLDivElement | null = null;
-
 const formatRatingCount = (value?: number) => {
   if (value === undefined) return "";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -166,8 +186,15 @@ const formatRatingCount = (value?: number) => {
   return `${value}`;
 };
 
-const applyTopSectionData = (data: OverlayData) => {
-  const communityEl = currentHost?.shadowRoot?.querySelector(
+const renderStars = (rating: number) => {
+  const clamped = Math.max(0, Math.min(5, rating));
+  const full = Math.floor(clamped);
+  const half = clamped % 1 >= 0.5;
+  return "★".repeat(full) + (half ? "½" : "");
+};
+
+const applyTopSectionData = (host: HTMLDivElement, data: OverlayData) => {
+  const communityEl = host.shadowRoot?.querySelector(
     "[data-field='communityRating']"
   ) as HTMLDivElement | null;
   if (communityEl) {
@@ -176,16 +203,18 @@ const applyTopSectionData = (data: OverlayData) => {
       communityEl.innerHTML = `
         Community rating:
         <span class="nxl-star">★</span>
-        ${data.communityRating.toFixed(1)}${count ? ` <span class="nxl-meta">${count} ratings</span>` : ""}
+        ${data.communityRating.toFixed(1)}${
+        count ? ` <span class="nxl-meta">${count} ratings</span>` : ""
+      }
       `;
     } else {
       communityEl.textContent = "Community rating: —";
     }
   }
 
-  const matchEl = currentHost?.shadowRoot?.querySelector(
-    "[data-field='match']"
-  ) as HTMLDivElement | null;
+  const matchEl = host.shadowRoot?.querySelector("[data-field='match']") as
+    | HTMLDivElement
+    | null;
   if (matchEl) {
     if (data.matchScore !== undefined) {
       matchEl.innerHTML = `Your match: <span class="nxl-match-value">${data.matchScore}%</span>`;
@@ -194,34 +223,84 @@ const applyTopSectionData = (data: OverlayData) => {
     }
   }
 
-  const becauseEl = currentHost?.shadowRoot?.querySelector(
-    "[data-field='because']"
-  ) as HTMLDivElement | null;
+  const becauseEl = host.shadowRoot?.querySelector("[data-field='because']") as
+    | HTMLDivElement
+    | null;
   if (becauseEl) {
     becauseEl.textContent = data.matchExplanation
       ? `Because you like: ${data.matchExplanation.replace(/^Because you like\s*/i, "")}`
       : "Because you like: —";
   }
-};
 
-export const injectTopSection = (expandedRoot: HTMLElement, data: OverlayData): boolean => {
-  const isNewRoot = currentRoot !== expandedRoot;
-  if (isNewRoot) {
-    if (currentHost) currentHost.remove();
-    currentRoot = expandedRoot;
-    currentHost = buildTopSection();
-    expandedRoot.insertBefore(currentHost, expandedRoot.firstChild);
-    requestAnimationFrame(() => {
-      currentHost?.classList.add("nxl-visible");
-    });
+  const badgesEl = host.shadowRoot?.querySelector("[data-field='badges']") as
+    | HTMLDivElement
+    | null;
+  if (badgesEl) {
+    badgesEl.innerHTML = "";
+    if (data.inWatchlist) {
+      const badge = document.createElement("span");
+      badge.className = "nxl-badge";
+      badge.textContent = "On watchlist";
+      badgesEl.appendChild(badge);
+    }
+    if (data.userRating !== undefined) {
+      const badge = document.createElement("span");
+      badge.className = "nxl-badge";
+      badge.textContent = `You rated ${renderStars(data.userRating)}`;
+      badgesEl.appendChild(badge);
+    }
+    if (!data.inWatchlist && data.userRating === undefined) {
+      const badge = document.createElement("span");
+      badge.className = "nxl-badge";
+      badge.textContent = "Letterboxd: —";
+      badgesEl.appendChild(badge);
+    }
   }
-
-  applyTopSectionData(data);
-  return isNewRoot;
 };
 
-export const removeTopSection = () => {
-  if (currentHost) currentHost.remove();
-  currentRoot = null;
-  currentHost = null;
+export const createOverlayManager = () => {
+  let currentRoot: HTMLElement | null = null;
+  let host: HTMLDivElement | null = null;
+  let lastData: OverlayData = {};
+
+  const ensureHost = () => {
+    if (!host) host = buildTopSection();
+  };
+
+  const mount = (expandedRoot: HTMLElement) => {
+    ensureHost();
+    if (!host) return;
+    if (currentRoot !== expandedRoot) {
+      host.remove();
+      expandedRoot.insertBefore(host, expandedRoot.firstChild);
+      currentRoot = expandedRoot;
+      requestAnimationFrame(() => {
+        host?.classList.add("nxl-visible");
+      });
+    }
+  };
+
+  const update = (data: OverlayData) => {
+    lastData = { ...lastData, ...data };
+    if (host) applyTopSectionData(host, lastData);
+  };
+
+  const unmount = () => {
+    if (host) host.remove();
+    currentRoot = null;
+  };
+
+  const renderLast = () => {
+    if (host) applyTopSectionData(host, lastData);
+  };
+
+  return {
+    mount,
+    update,
+    unmount,
+    renderLast,
+    getLastData: () => lastData,
+    getCurrentRoot: () => currentRoot,
+    isMounted: () => Boolean(host && host.isConnected)
+  };
 };

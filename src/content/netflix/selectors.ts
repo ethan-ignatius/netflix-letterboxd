@@ -20,6 +20,8 @@ const CONTAINER_SELECTORS = [
   "[data-uia*='details']"
 ];
 
+export const EXPANDED_CONTAINER_SELECTOR = CONTAINER_SELECTORS.join(",");
+
 const TITLE_TEXT_SELECTORS = [
   "h1",
   "h2",

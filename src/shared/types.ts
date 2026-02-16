@@ -1,9 +1,15 @@
-export type LetterboxdIndexEntry = {
+export type LetterboxdIndexLegacyEntry = {
   r?: number;
   w?: 1;
 };
 
-export type LetterboxdIndex = Record<string, LetterboxdIndexEntry>;
+export type LetterboxdIndexLegacy = Record<string, LetterboxdIndexLegacyEntry>;
+
+export type LetterboxdIndex = {
+  ratingsByKey: Record<string, number>;
+  watchlistKeys: Record<string, true>;
+  updatedAt: number;
+};
 
 export type LetterboxdStats = {
   importedAt: string;
@@ -60,3 +66,19 @@ export type TitleResolvedMessage = {
 };
 
 export type ExtensionMessage = ResolveTitleMessage | TitleResolvedMessage;
+
+export type LetterboxdIndexUpdatedMessage = {
+  type: "LB_INDEX_UPDATED";
+};
+
+export type LetterboxdIndexUpdatedAckMessage = {
+  type: "LB_INDEX_UPDATED_ACK";
+  payload: {
+    updatedAt: number;
+  };
+};
+
+export type ExtensionRuntimeMessage =
+  | ExtensionMessage
+  | LetterboxdIndexUpdatedMessage
+  | LetterboxdIndexUpdatedAckMessage;

@@ -1,6 +1,8 @@
+import { log } from "../../shared/logger";
 import { STORAGE_KEYS } from "../../shared/constants";
 import { buildLetterboxdKey, parseLetterboxdKey } from "../../shared/normalize";
-import type { ResolveTitleMessage } from "../../shared/types";
+import type { LetterboxdIndex, ResolveTitleMessage } from "../../shared/types";
+import { getLetterboxdIndex as loadLetterboxdIndex } from "../../shared/storage";
 import {
   getTmdbApiKey,
   getTmdbFeatures,
@@ -18,9 +20,8 @@ type MatchProfile = {
   decadeStats: Record<string, { avg: number; count: number; strength: number }>;
 };
 
-const getLetterboxdIndex = async (): Promise<Record<string, { r?: number; w?: 1 }>> => {
-  const data = await chrome.storage.local.get([STORAGE_KEYS.LETTERBOXD_INDEX]);
-  return (data[STORAGE_KEYS.LETTERBOXD_INDEX] as Record<string, { r?: number; w?: 1 }> | undefined) ?? {};
+const getLetterboxdIndex = async (): Promise<LetterboxdIndex | null> => {
+  return loadLetterboxdIndex();
 };
 
 const getLetterboxdStats = async (): Promise<{ importedAt?: string } | null> => {
@@ -43,6 +44,11 @@ export const resolveLetterboxdEntry = async (
   resolvedYear?: number
 ) => {
   const index = await getLetterboxdIndex();
+  if (!index) {
+    log("LB_INDEX_LOADED", { found: false });
+    return {};
+  }
+  log("LB_INDEX_LOADED", { found: true, updatedAt: index.updatedAt });
   const keys = [
     buildLetterboxdKey(payload.titleText, payload.year),
     buildLetterboxdKey(resolvedTitle, resolvedYear),
@@ -51,15 +57,16 @@ export const resolveLetterboxdEntry = async (
   ].filter((key) => key);
 
   for (const key of keys) {
-    const entry = index[key];
-    if (entry) {
+    if (index.watchlistKeys[key] || index.ratingsByKey[key] !== undefined) {
+      log("LB_MATCH_FOUND", { key });
       return {
-        inWatchlist: entry.w === 1,
-        userRating: entry.r
+        inWatchlist: index.watchlistKeys[key] === true,
+        userRating: index.ratingsByKey[key]
       };
     }
   }
 
+  log("LB_MATCH_NOT_FOUND", { keys, title: resolvedTitle ?? payload.titleText });
   return {};
 };
 
@@ -80,8 +87,9 @@ export const buildMatchProfile = async (): Promise<MatchProfile | null> => {
   }
 
   const index = await getLetterboxdIndex();
+  if (!index) return null;
   const tmdbCache = await getTmdbCacheSnapshot();
-  const entries = Object.entries(index).filter(([, entry]) => entry.r !== undefined);
+  const entries = Object.entries(index.ratingsByKey);
   if (!entries.length) return null;
 
   let ratingSum = 0;
@@ -90,9 +98,7 @@ export const buildMatchProfile = async (): Promise<MatchProfile | null> => {
   const decadeTotals: Record<string, { sum: number; count: number }> = {};
 
   const maxEntries = 300;
-  for (const [key, entry] of entries.slice(0, maxEntries)) {
-    const rating = entry.r;
-    if (rating === undefined) continue;
+  for (const [key, rating] of entries.slice(0, maxEntries)) {
     ratingSum += rating;
     ratingCount += 1;
 

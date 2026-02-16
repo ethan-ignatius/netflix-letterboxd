@@ -4,6 +4,7 @@ import { STORAGE_KEYS } from "../shared/constants";
 import { buildLetterboxdKey } from "../shared/normalize";
 import { unzipSync, strFromU8 } from "fflate";
 import type { LetterboxdIndex, LetterboxdStats } from "../shared/types";
+import { setLetterboxdIndex } from "../shared/storage";
 
 const overlayToggle = document.getElementById("overlayToggle") as HTMLInputElement | null;
 const tmdbKeyInput = document.getElementById("tmdbKey") as HTMLInputElement | null;
@@ -110,8 +111,7 @@ const parseRatings = (csv: string, index: LetterboxdIndex) => {
     if (Number.isNaN(ratingValue)) return;
 
     const key = buildLetterboxdKey(title, year);
-    if (!index[key]) index[key] = {};
-    index[key].r = ratingValue;
+    index.ratingsByKey[key] = ratingValue;
     count += 1;
   });
 
@@ -131,8 +131,7 @@ const parseWatchlist = (csv: string, index: LetterboxdIndex) => {
     if (!title) return;
     const year = parseYear(getField(row, yearIdx));
     const key = buildLetterboxdKey(title, year);
-    if (!index[key]) index[key] = {};
-    index[key].w = 1;
+    index.watchlistKeys[key] = true;
     count += 1;
   });
 
@@ -363,7 +362,11 @@ const bindListeners = () => {
       log("Detected ratings.csv", ratingsFile);
       log("Detected watchlist.csv", watchlistFile);
 
-      const index: LetterboxdIndex = {};
+      const index: LetterboxdIndex = {
+        ratingsByKey: {},
+        watchlistKeys: {},
+        updatedAt: Date.now()
+      };
       let ratingsCount = 0;
       let watchlistCount = 0;
 
@@ -399,13 +402,17 @@ const bindListeners = () => {
         watchlistCount
       };
 
+      index.updatedAt = Date.now();
+      await setLetterboxdIndex(index);
       await chrome.storage.local.set({
-        [STORAGE_KEYS.LETTERBOXD_INDEX]: index,
         [STORAGE_KEYS.LETTERBOXD_STATS]: stats,
         [STORAGE_KEYS.LAST_IMPORT_AT]: stats.importedAt
       });
 
       log("Letterboxd ZIP imported", { ratingsCount, watchlistCount });
+      chrome.runtime.sendMessage({ type: "LB_INDEX_UPDATED" }).catch((err) => {
+        log("LB_INDEX_UPDATED send failed", err);
+      });
       showSuccess(`Imported ${ratingsCount} ratings and ${watchlistCount} watchlist items.`);
       await renderPopup();
     } catch (err) {

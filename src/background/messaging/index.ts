@@ -1,12 +1,39 @@
 import { log } from "../../shared/logger";
-import type { ExtensionMessage, ResolveTitleMessage, TitleResolvedMessage } from "../../shared/types";
+import { STORAGE_KEYS } from "../../shared/constants";
+import type {
+  ExtensionRuntimeMessage,
+  LetterboxdIndexUpdatedAckMessage,
+  LetterboxdIndexUpdatedMessage,
+  ResolveTitleMessage,
+  TitleResolvedMessage
+} from "../../shared/types";
 import { resolveTitleWithTmdb } from "../tmdb";
 import { buildMatchProfile, computeMatchScore, resolveLetterboxdEntry } from "../letterboxd";
 
 export const registerMessageHandlers = () => {
   chrome.runtime.onMessage.addListener(
-    (message: ExtensionMessage, sender, sendResponse) => {
+    (message: ExtensionRuntimeMessage, sender, sendResponse) => {
       log("Background received message", { message, sender });
+
+      if (message.type === "LB_INDEX_UPDATED") {
+        const updated = message as LetterboxdIndexUpdatedMessage;
+        void updated;
+        void (async () => {
+          await chrome.storage.local.remove([STORAGE_KEYS.MATCH_PROFILE]);
+          log("LB_INDEX_UPDATED");
+          const ack: LetterboxdIndexUpdatedAckMessage = {
+            type: "LB_INDEX_UPDATED_ACK",
+            payload: { updatedAt: Date.now() }
+          };
+          try {
+            chrome.runtime.sendMessage(ack).catch(() => undefined);
+          } catch {
+            // noop
+          }
+          sendResponse(ack);
+        })();
+        return true;
+      }
 
       if (message.type === "RESOLVE_TITLE") {
         const { requestId, payload } = message as ResolveTitleMessage;

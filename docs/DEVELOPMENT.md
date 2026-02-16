@@ -38,3 +38,12 @@ This runs Vite builds in watch mode for content + app bundles.
 - Popup logs appear in the popup DevTools console.
 
 Note: Logs are gated behind the `DEBUG` constant and are only active in development builds.
+
+## Manual Test Plan
+
+1. Build and load unpacked from `dist/`.
+2. On `netflix.com/browse`, confirm the Letterboxd badge appears bottom-right.
+3. Hover a title to expand the jawbone card and confirm the overlay panel mounts.
+4. Start playback (`/watch/...`) and confirm the badge hides.
+5. Return to browse and confirm the badge reappears.
+6. Import a Letterboxd export ZIP and verify watchlist/rating badges update.
