@@ -38,11 +38,49 @@
 
       <section class="panel">
         <div class="label">Letterboxd personalization</div>
-        <button id="uploadZip" class="button" type="button">Upload ZIP</button>
+        <div class="row">
+          <button id="uploadZip" class="button" type="button">
+            Import Letterboxd Export (.zip)
+          </button>
+          <button id="helpZip" class="link-button" type="button">How do I get this?</button>
+        </div>
+        <div class="helper">
+          Upload the ZIP you download from Letterboxd → Settings → Data → Export.
+        </div>
+        <div class="note">Do not unzip. Upload the .zip file directly.</div>
         <input id="zipInput" class="file-input" type="file" accept=".zip" />
-        <div id="zipStatus" class="status">No export loaded.</div>
-        <div id="zipMeta" class="status small">Last imported: —</div>
+        <div id="zipError" class="banner error" hidden></div>
+        <div id="zipSuccess" class="banner success" hidden></div>
+        <div id="zipStatus" class="status">No Letterboxd data imported yet.</div>
+        <div id="zipMeta" class="status small">
+          Import your export ZIP to enable watchlist + rating badges and match %.
+        </div>
+        <button id="clearLetterboxd" class="button secondary" type="button">
+          Clear Letterboxd data
+        </button>
       </section>
+      <div id="helpModal" class="modal" hidden>
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title">How to get your Letterboxd export ZIP</div>
+            <button id="closeHelp" class="link-button" type="button">Close</button>
+          </div>
+          <ol class="modal-steps">
+            <li>Open Letterboxd and sign in</li>
+            <li>Go to Settings</li>
+            <li>Click Data</li>
+            <li>Export your data</li>
+            <li>Download the ZIP and upload it here (do not unzip)</li>
+          </ol>
+          <div class="modal-link">
+            <code id="exportUrl">https://letterboxd.com/settings/data/</code>
+            <button id="copyLink" class="button secondary" type="button">Copy link</button>
+          </div>
+          <div class="modal-footer">
+            <button id="dismissHelp" class="button" type="button">Got it</button>
+          </div>
+        </div>
+      </div>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

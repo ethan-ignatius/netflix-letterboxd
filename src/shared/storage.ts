@@ -9,6 +9,8 @@ export interface StorageState {
   tmdbCache?: Record<string, unknown>;
   letterboxdIndex?: LetterboxdIndex;
   letterboxdStats?: LetterboxdStats;
+  "lb_index_v1"?: LetterboxdIndex;
+  "lb_stats_v1"?: LetterboxdStats;
 }
 
 export const getStorage = async (): Promise<StorageState> => {
@@ -20,7 +22,9 @@ export const getStorage = async (): Promise<StorageState> => {
     "tmdbApiKey",
     "tmdbCache",
     "letterboxdIndex",
-    "letterboxdStats"
+    "letterboxdStats",
+    "lb_index_v1",
+    "lb_stats_v1"
   ]) as Promise<StorageState>;
 };
 

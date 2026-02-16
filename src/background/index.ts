@@ -59,13 +59,13 @@ const buildLetterboxdKey = (title?: string, year?: number): string => {
 };
 
 const getLetterboxdIndex = async (): Promise<Record<string, { r?: number; w?: 1 }>> => {
-  const data = await chrome.storage.local.get(["letterboxdIndex"]);
-  return (data.letterboxdIndex as Record<string, { r?: number; w?: 1 }> | undefined) ?? {};
+  const data = await chrome.storage.local.get(["lb_index_v1"]);
+  return (data.lb_index_v1 as Record<string, { r?: number; w?: 1 }> | undefined) ?? {};
 };
 
 const getLetterboxdStats = async (): Promise<{ importedAt?: string } | null> => {
-  const data = await chrome.storage.local.get(["letterboxdStats"]);
-  return (data.letterboxdStats as { importedAt?: string } | undefined) ?? null;
+  const data = await chrome.storage.local.get(["lb_stats_v1"]);
+  return (data.lb_stats_v1 as { importedAt?: string } | undefined) ?? null;
 };
 
 const getTmdbCache = async (): Promise<TmdbCacheState> => {

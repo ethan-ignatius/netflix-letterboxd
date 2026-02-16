@@ -5,7 +5,9 @@ export type StorageKeys =
   | "tmdbApiKey"
   | "tmdbCache"
   | "letterboxdIndex"
-  | "letterboxdStats";
+  | "letterboxdStats"
+  | "lb_index_v1"
+  | "lb_stats_v1";
 
 export type LetterboxdIndexEntry = {
   r?: number;
