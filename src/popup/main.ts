@@ -22,6 +22,9 @@ const dismissHelp = document.getElementById("dismissHelp") as HTMLButtonElement 
 const copyLink = document.getElementById("copyLink") as HTMLButtonElement | null;
 const exportUrl = document.getElementById("exportUrl") as HTMLSpanElement | null;
 
+let listenersBound = false;
+let modalOpen = false;
+
 const normalizeTitle = (title: string) =>
   title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
@@ -166,6 +169,22 @@ const showSuccess = (message: string) => {
   zipSuccess.hidden = false;
 };
 
+const openHelpModal = () => {
+  if (!helpModal) return;
+  helpModal.hidden = false;
+  modalOpen = true;
+  document.body.style.overflow = "hidden";
+  log("HELP_MODAL_OPEN");
+};
+
+const closeHelpModal = () => {
+  if (!helpModal) return;
+  helpModal.hidden = true;
+  modalOpen = false;
+  document.body.style.overflow = "";
+  log("HELP_MODAL_CLOSE");
+};
+
 const renderPopup = async () => {
   const state = await getStorage();
 
@@ -197,132 +216,138 @@ const renderPopup = async () => {
   }
 };
 
-overlayToggle?.addEventListener("change", async () => {
-  const enabled = overlayToggle.checked;
-  await chrome.storage.local.set({ overlayEnabled: enabled });
-  log("Overlay toggle updated", { enabled });
-});
+const bindListeners = () => {
+  if (listenersBound) return;
+  listenersBound = true;
 
-saveKeyButton?.addEventListener("click", async () => {
-  const value = tmdbKeyInput?.value.trim();
-  if (!value) {
-    await chrome.storage.local.remove("tmdbApiKey");
-    if (keyStatus) keyStatus.textContent = "Not set.";
-    log("TMDb key cleared");
-    return;
-  }
+  overlayToggle?.addEventListener("change", async () => {
+    const enabled = overlayToggle.checked;
+    await chrome.storage.local.set({ overlayEnabled: enabled });
+    log("Overlay toggle updated", { enabled });
+  });
 
-  await chrome.storage.local.set({ tmdbApiKey: value });
-  if (keyStatus) keyStatus.textContent = "Key saved.";
-  log("TMDb key saved");
-});
+  saveKeyButton?.addEventListener("click", async () => {
+    const value = tmdbKeyInput?.value.trim();
+    if (!value) {
+      await chrome.storage.local.remove("tmdbApiKey");
+      if (keyStatus) keyStatus.textContent = "Not set.";
+      log("TMDb key cleared");
+      return;
+    }
 
-clearCacheButton?.addEventListener("click", async () => {
-  await chrome.storage.local.remove("tmdbCache");
-  log("TMDb cache cleared");
-});
+    await chrome.storage.local.set({ tmdbApiKey: value });
+    if (keyStatus) keyStatus.textContent = "Key saved.";
+    log("TMDb key saved");
+  });
 
-uploadZip?.addEventListener("click", () => {
-  zipInput?.click();
-});
+  clearCacheButton?.addEventListener("click", async () => {
+    await chrome.storage.local.remove("tmdbCache");
+    log("TMDb cache cleared");
+  });
 
-helpZip?.addEventListener("click", () => {
-  if (helpModal) helpModal.hidden = false;
-});
+  uploadZip?.addEventListener("click", () => {
+    zipInput?.click();
+  });
 
-closeHelp?.addEventListener("click", () => {
-  if (helpModal) helpModal.hidden = true;
-});
+  helpZip?.addEventListener("click", openHelpModal);
+  closeHelp?.addEventListener("click", closeHelpModal);
+  dismissHelp?.addEventListener("click", closeHelpModal);
 
-dismissHelp?.addEventListener("click", () => {
-  if (helpModal) helpModal.hidden = true;
-});
+  helpModal?.addEventListener("click", (event) => {
+    if (event.target === helpModal) closeHelpModal();
+  });
 
-copyLink?.addEventListener("click", async () => {
-  const url = exportUrl?.textContent ?? "https://letterboxd.com/settings/data/";
-  await navigator.clipboard.writeText(url);
-  showSuccess("Copied export link to clipboard.");
-});
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && modalOpen) closeHelpModal();
+  });
 
-zipInput?.addEventListener("change", async () => {
-  const file = zipInput.files?.[0];
-  if (!file) return;
+  copyLink?.addEventListener("click", async () => {
+    const url = exportUrl?.textContent ?? "https://letterboxd.com/settings/data/";
+    await navigator.clipboard.writeText(url);
+    showSuccess("Copied export link to clipboard.");
+  });
 
-  try {
+  zipInput?.addEventListener("change", async () => {
+    const file = zipInput.files?.[0];
+    if (!file) return;
+
+    try {
+      resetBanners();
+      const buffer = await file.arrayBuffer();
+      const zip = unzipSync(new Uint8Array(buffer));
+
+      const entries = Object.keys(zip).filter(
+        (name) => !name.startsWith("__MACOSX") && !/\/\./.test(name)
+      );
+      log("ZIP entries", entries);
+
+      const ratingsFile = entries.find((name) => /ratings\.csv$/i.test(name));
+      const watchlistFile = entries.find((name) => /watchlist\.csv$/i.test(name));
+      log("Detected ratings.csv", ratingsFile);
+      log("Detected watchlist.csv", watchlistFile);
+
+      const index: LetterboxdIndex = {};
+      let ratingsCount = 0;
+      let watchlistCount = 0;
+
+      if (ratingsFile) {
+        const csv = strFromU8(zip[ratingsFile]);
+        ratingsCount = parseRatings(csv, index);
+      }
+
+      if (watchlistFile) {
+        const csv = strFromU8(zip[watchlistFile]);
+        watchlistCount = parseWatchlist(csv, index);
+      }
+
+      log("Parsed counts", { ratingsCount, watchlistCount });
+
+      if (!ratingsFile || !watchlistFile) {
+        showError(
+          "Couldn’t find ratings.csv/watchlist.csv in this ZIP. Make sure you uploaded the official Letterboxd export ZIP (don’t unzip it)."
+        );
+        return;
+      }
+
+      if ((ratingsFile && ratingsCount === 0) || (watchlistFile && watchlistCount === 0)) {
+        showError(
+          "Found the file but parsed 0 rows. Please re-export from Letterboxd and try again."
+        );
+        return;
+      }
+
+      const stats: LetterboxdStats = {
+        importedAt: new Date().toLocaleString(),
+        ratingsCount,
+        watchlistCount
+      };
+
+      await chrome.storage.local.set({
+        lb_index_v1: index,
+        lb_stats_v1: stats,
+        lastImportAt: stats.importedAt
+      });
+
+      log("Letterboxd ZIP imported", { ratingsCount, watchlistCount });
+      showSuccess(`Imported ${ratingsCount} ratings and ${watchlistCount} watchlist items.`);
+      await renderPopup();
+    } catch (err) {
+      log("Letterboxd ZIP import failed", err);
+      showError("Import failed. Please re-export from Letterboxd and try again.");
+    } finally {
+      if (zipInput) zipInput.value = "";
+    }
+  });
+
+  clearLetterboxd?.addEventListener("click", async () => {
+    await chrome.storage.local.remove(["lb_index_v1", "lb_stats_v1", "lastImportAt"]);
     resetBanners();
-    const buffer = await file.arrayBuffer();
-    const zip = unzipSync(new Uint8Array(buffer));
-
-    const entries = Object.keys(zip).filter(
-      (name) => !name.startsWith("__MACOSX") && !/\/\\./.test(name)
-    );
-    log("ZIP entries", entries);
-
-    const ratingsFile = entries.find((name) => /ratings\\.csv$/i.test(name));
-    const watchlistFile = entries.find((name) => /watchlist\\.csv$/i.test(name));
-    log("Detected ratings.csv", ratingsFile);
-    log("Detected watchlist.csv", watchlistFile);
-
-    const index: LetterboxdIndex = {};
-    let ratingsCount = 0;
-    let watchlistCount = 0;
-
-    if (ratingsFile) {
-      const csv = strFromU8(zip[ratingsFile]);
-      ratingsCount = parseRatings(csv, index);
-    }
-
-    if (watchlistFile) {
-      const csv = strFromU8(zip[watchlistFile]);
-      watchlistCount = parseWatchlist(csv, index);
-    }
-
-    log("Parsed counts", { ratingsCount, watchlistCount });
-
-    if (!ratingsFile || !watchlistFile) {
-      showError(
-        "Couldn’t find ratings.csv/watchlist.csv in this ZIP. Make sure you uploaded the official Letterboxd export ZIP (don’t unzip it)."
-      );
-      return;
-    }
-
-    if ((ratingsFile && ratingsCount === 0) || (watchlistFile && watchlistCount === 0)) {
-      showError(
-        "Found the file but parsed 0 rows. Please re-export from Letterboxd and try again."
-      );
-      return;
-    }
-
-    const stats: LetterboxdStats = {
-      importedAt: new Date().toLocaleString(),
-      ratingsCount,
-      watchlistCount
-    };
-
-    await chrome.storage.local.set({
-      lb_index_v1: index,
-      lb_stats_v1: stats,
-      lastImportAt: stats.importedAt
-    });
-
-    log("Letterboxd ZIP imported", { ratingsCount, watchlistCount });
-    showSuccess(`Imported ${ratingsCount} ratings and ${watchlistCount} watchlist items.`);
+    showSuccess("Cleared Letterboxd data.");
     await renderPopup();
-  } catch (err) {
-    log("Letterboxd ZIP import failed", err);
-    showError("Import failed. Please re-export from Letterboxd and try again.");
-  } finally {
-    if (zipInput) zipInput.value = "";
-  }
-});
+  });
+};
 
-clearLetterboxd?.addEventListener("click", async () => {
-  await chrome.storage.local.remove(["lb_index_v1", "lb_stats_v1", "lastImportAt"]);
-  resetBanners();
-  showSuccess("Cleared Letterboxd data.");
-  await renderPopup();
-});
-
+bindListeners();
 renderPopup().catch((err) => {
   log("Popup render failed", err);
 });
