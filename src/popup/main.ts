@@ -16,14 +16,13 @@ const zipError = document.getElementById("zipError") as HTMLDivElement | null;
 const zipSuccess = document.getElementById("zipSuccess") as HTMLDivElement | null;
 const clearLetterboxd = document.getElementById("clearLetterboxd") as HTMLButtonElement | null;
 const helpZip = document.getElementById("helpZip") as HTMLButtonElement | null;
-const helpModal = document.getElementById("helpModal") as HTMLDivElement | null;
-const closeHelp = document.getElementById("closeHelp") as HTMLButtonElement | null;
-const dismissHelp = document.getElementById("dismissHelp") as HTMLButtonElement | null;
-const copyLink = document.getElementById("copyLink") as HTMLButtonElement | null;
-const exportUrl = document.getElementById("exportUrl") as HTMLSpanElement | null;
 
 let listenersBound = false;
-let modalOpen = false;
+let isHelpOpen = false;
+let helpModalEl: HTMLDivElement | null = null;
+let lastFocusedEl: HTMLElement | null = null;
+
+const HELP_URL = "https://letterboxd.com/settings/data/";
 
 const normalizeTitle = (title: string) =>
   title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -169,20 +168,118 @@ const showSuccess = (message: string) => {
   zipSuccess.hidden = false;
 };
 
-const openHelpModal = () => {
-  if (!helpModal) return;
-  helpModal.hidden = false;
-  modalOpen = true;
-  document.body.style.overflow = "hidden";
-  log("HELP_MODAL_OPEN");
+const closeHelpModal = () => {
+  log("HELP_MODAL_CLOSE", { before: isHelpOpen });
+  isHelpOpen = false;
+  if (helpModalEl) {
+    helpModalEl.remove();
+    helpModalEl = null;
+  }
+  document.body.style.overflow = "";
+  if (lastFocusedEl) lastFocusedEl.focus();
+  log("HELP_MODAL_CLOSE", { after: isHelpOpen });
 };
 
-const closeHelpModal = () => {
-  if (!helpModal) return;
-  helpModal.hidden = true;
-  modalOpen = false;
-  document.body.style.overflow = "";
-  log("HELP_MODAL_CLOSE");
+const handleEscape = (event: KeyboardEvent) => {
+  if (event.key === "Escape" && isHelpOpen) {
+    closeHelpModal();
+  }
+};
+
+const openHelpModal = () => {
+  if (isHelpOpen) return;
+  isHelpOpen = true;
+  lastFocusedEl = document.activeElement as HTMLElement | null;
+
+  if (helpModalEl) {
+    helpModalEl.remove();
+  }
+
+  const modal = document.createElement("div");
+  modal.className = "modal";
+
+  const card = document.createElement("div");
+  card.className = "modal-card";
+  card.setAttribute("role", "dialog");
+  card.setAttribute("aria-modal", "true");
+  card.addEventListener("click", (event) => event.stopPropagation());
+
+  const header = document.createElement("div");
+  header.className = "modal-header";
+
+  const title = document.createElement("div");
+  title.className = "modal-title";
+  title.textContent = "How to get your Letterboxd export ZIP";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "link-button";
+  closeBtn.type = "button";
+  closeBtn.textContent = "Close";
+  closeBtn.addEventListener("click", closeHelpModal);
+
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+
+  const steps = document.createElement("ol");
+  steps.className = "modal-steps";
+  [
+    "Open Letterboxd and sign in",
+    "Go to Settings",
+    "Click Data",
+    "Export your data",
+    "Download the ZIP and upload it here (do not unzip)"
+  ].forEach((text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    steps.appendChild(li);
+  });
+
+  const linkRow = document.createElement("div");
+  linkRow.className = "modal-link";
+
+  const code = document.createElement("code");
+  code.textContent = HELP_URL;
+
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "button secondary";
+  copyBtn.type = "button";
+  copyBtn.textContent = "Copy link";
+  copyBtn.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(HELP_URL);
+    showSuccess("Copied export link to clipboard.");
+  });
+
+  linkRow.appendChild(code);
+  linkRow.appendChild(copyBtn);
+
+  const footer = document.createElement("div");
+  footer.className = "modal-footer";
+
+  const gotIt = document.createElement("button");
+  gotIt.className = "button";
+  gotIt.type = "button";
+  gotIt.textContent = "Got it";
+  gotIt.addEventListener("click", closeHelpModal);
+
+  footer.appendChild(gotIt);
+
+  card.appendChild(header);
+  card.appendChild(steps);
+  card.appendChild(linkRow);
+  card.appendChild(footer);
+
+  modal.appendChild(card);
+  modal.addEventListener("click", closeHelpModal);
+
+  document.body.appendChild(modal);
+  helpModalEl = modal;
+  document.body.style.overflow = "hidden";
+
+  requestAnimationFrame(() => {
+    closeBtn.focus();
+  });
+
+  log("HELP_MODAL_OPEN");
 };
 
 const renderPopup = async () => {
@@ -250,22 +347,8 @@ const bindListeners = () => {
   });
 
   helpZip?.addEventListener("click", openHelpModal);
-  closeHelp?.addEventListener("click", closeHelpModal);
-  dismissHelp?.addEventListener("click", closeHelpModal);
 
-  helpModal?.addEventListener("click", (event) => {
-    if (event.target === helpModal) closeHelpModal();
-  });
-
-  window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && modalOpen) closeHelpModal();
-  });
-
-  copyLink?.addEventListener("click", async () => {
-    const url = exportUrl?.textContent ?? "https://letterboxd.com/settings/data/";
-    await navigator.clipboard.writeText(url);
-    showSuccess("Copied export link to clipboard.");
-  });
+  window.addEventListener("keydown", handleEscape);
 
   zipInput?.addEventListener("change", async () => {
     const file = zipInput.files?.[0];
