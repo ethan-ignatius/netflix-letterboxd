@@ -80,6 +80,8 @@ const TITLE_LIKE_SELECTORS = [
   "[class*='name']"
 ];
 
+const NAV_BANNED_PATTERN = /(browse|home|my list|popular)/i;
+
 const isVisible = (el: Element): boolean => {
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return false;
@@ -304,6 +306,7 @@ export const extractGenresLine = (container?: Element | null): string | undefine
 };
 
 const isBannedTitleText = (text: string) => {
+  if (NAV_BANNED_PATTERN.test(text)) return true;
   return (
     EPISODE_TITLE_PATTERN.test(text) ||
     EPISODE_TIME_PATTERN.test(text) ||

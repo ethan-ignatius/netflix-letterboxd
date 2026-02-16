@@ -3,8 +3,6 @@ import { getStorage, setStorage } from "../shared/storage";
 import {
   detectActiveTitleContext,
   extractDisplayTitle,
-  extractGenresLine,
-  extractMetadataLine,
   findExpandedRoot,
   findOverlayAnchor,
   findPreviewElement,
@@ -203,8 +201,6 @@ const emitActiveTitleChange = () => {
     if (match) candidate && (candidate.netflixTitleId = match[1]);
     if (href) candidate && (candidate.href = href);
   }
-  const metadataLine = extractMetadataLine(expandedRoot ?? container);
-  const genresLine = extractGenresLine(expandedRoot ?? container);
   if (!expandedRoot || !previewEl) {
     if (DEBUG) {
       log("Overlay skipped", {
@@ -266,6 +262,7 @@ const emitActiveTitleChange = () => {
       ...candidate,
       anchor: describeElement(anchor),
       container: describeElement(expandedRoot),
+      expandedRootSnippet: expandedRoot?.outerHTML.slice(0, 200),
       rawTitle,
       normalizedTitle,
       chosenTitle: displayTitle.title,
@@ -299,9 +296,6 @@ const emitActiveTitleChange = () => {
 
       try {
         const didInject = injectTopSection(expandedRoot, {
-          titleLine: resolvedTitle,
-          metadataLine,
-          genresLine,
           communityRating: response.payload.tmdbVoteAverage,
           ratingCount: response.payload.tmdbVoteCount,
           matchScore: response.payload.matchScore,
@@ -318,14 +312,8 @@ const emitActiveTitleChange = () => {
       log("Title resolve failed", { requestId, err });
     });
 
-  const titleLine = resolvedTitle;
-
   try {
-    const didInject = injectTopSection(expandedRoot, {
-      titleLine,
-      metadataLine,
-      genresLine
-    });
+    const didInject = injectTopSection(expandedRoot, {});
     if (DEBUG && didInject) {
       log("Injected top section", { container: describeElement(expandedRoot) });
     }

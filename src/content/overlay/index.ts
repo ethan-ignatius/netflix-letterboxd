@@ -1,7 +1,4 @@
 export interface OverlayData {
-  titleLine: string;
-  metadataLine?: string;
-  genresLine?: string;
   communityRating?: number;
   ratingCount?: number;
   matchScore?: number;
@@ -27,59 +24,39 @@ const buildTopSection = (data: OverlayData): HTMLDivElement => {
       display: block;
       width: 100%;
       box-sizing: border-box;
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1),
+        transform 180ms cubic-bezier(0.2, 0, 0, 1);
+      will-change: opacity, transform;
+    }
+    :host(.nxl-visible) {
+      opacity: 1;
+      transform: translateY(0);
     }
     .nxl-top-section {
-      background: rgba(0, 0, 0, 0.85);
+      background: rgba(0, 0, 0, 0.82);
       color: #f5f5f5;
-      padding: 20px;
+      padding: 16px 20px;
       border-top-left-radius: 12px;
       border-top-right-radius: 12px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       display: grid;
-      gap: 10px;
+      gap: 8px;
       box-sizing: border-box;
     }
     .nxl-header {
       display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
+      align-items: center;
+      justify-content: flex-end;
       gap: 16px;
-    }
-    .nxl-title {
-      font-size: 30px;
-      font-weight: 700;
-      line-height: 1.1;
-      letter-spacing: 0.01em;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      max-width: 70%;
-    }
-    .nxl-meta {
-      font-size: 14px;
-      color: rgba(255, 255, 255, 0.75);
-      margin-top: 6px;
-      display: -webkit-box;
-      -webkit-line-clamp: 1;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .nxl-genres {
-      font-size: 14px;
-      color: rgba(255, 255, 255, 0.7);
-      margin-top: 4px;
-      display: -webkit-box;
-      -webkit-line-clamp: 1;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
     }
     .nxl-branding {
       display: inline-flex;
       align-items: center;
       gap: 8px;
       font-size: 12px;
-      color: rgba(255, 255, 255, 0.8);
+      color: rgba(255, 255, 255, 0.85);
       white-space: nowrap;
       flex-shrink: 0;
     }
@@ -99,11 +76,9 @@ const buildTopSection = (data: OverlayData): HTMLDivElement => {
     .nxl-dot.blue { background: #4aa8ff; }
     .nxl-body {
       display: grid;
-      gap: 8px;
-      font-size: 16px;
+      gap: 6px;
+      font-size: 15px;
       color: rgba(255, 255, 255, 0.9);
-      max-height: 220px;
-      overflow: auto;
     }
     .nxl-rating {
       display: flex;
@@ -136,24 +111,6 @@ const buildTopSection = (data: OverlayData): HTMLDivElement => {
   const header = document.createElement("div");
   header.className = "nxl-header";
 
-  const titleBlock = document.createElement("div");
-
-  const title = document.createElement("div");
-  title.className = "nxl-title";
-  title.textContent = data.titleLine;
-
-  const meta = document.createElement("div");
-  meta.className = "nxl-meta";
-  meta.dataset.field = "metadata";
-
-  const genres = document.createElement("div");
-  genres.className = "nxl-genres";
-  genres.dataset.field = "genres";
-
-  titleBlock.appendChild(title);
-  titleBlock.appendChild(meta);
-  titleBlock.appendChild(genres);
-
   const branding = document.createElement("div");
   branding.className = "nxl-branding";
   branding.innerHTML = `
@@ -166,7 +123,6 @@ const buildTopSection = (data: OverlayData): HTMLDivElement => {
     Letterboxd
   `;
 
-  header.appendChild(titleBlock);
   header.appendChild(branding);
 
   const body = document.createElement("div");
@@ -185,7 +141,7 @@ const buildTopSection = (data: OverlayData): HTMLDivElement => {
   const because = document.createElement("div");
   because.className = "nxl-because";
   because.dataset.field = "because";
-  because.textContent = "Because you like —";
+  because.textContent = "Because you like: —";
 
   body.appendChild(communityRating);
   body.appendChild(match);
@@ -211,9 +167,6 @@ const formatRatingCount = (value?: number) => {
 };
 
 const applyTopSectionData = (data: OverlayData) => {
-  const titleEl = currentHost?.shadowRoot?.querySelector(".nxl-title");
-  if (titleEl) titleEl.textContent = data.titleLine;
-
   const communityEl = currentHost?.shadowRoot?.querySelector(
     "[data-field='communityRating']"
   ) as HTMLDivElement | null;
@@ -245,33 +198,9 @@ const applyTopSectionData = (data: OverlayData) => {
     "[data-field='because']"
   ) as HTMLDivElement | null;
   if (becauseEl) {
-    becauseEl.textContent = data.matchExplanation ?? "Because you like —";
-  }
-
-  const metaEl = currentHost?.shadowRoot?.querySelector(
-    "[data-field='metadata']"
-  ) as HTMLDivElement | null;
-  if (metaEl) {
-    if (data.metadataLine) {
-      metaEl.style.display = "block";
-      metaEl.textContent = data.metadataLine;
-    } else {
-      metaEl.style.display = "none";
-      metaEl.textContent = "";
-    }
-  }
-
-  const genresEl = currentHost?.shadowRoot?.querySelector(
-    "[data-field='genres']"
-  ) as HTMLDivElement | null;
-  if (genresEl) {
-    if (data.genresLine) {
-      genresEl.style.display = "block";
-      genresEl.textContent = data.genresLine;
-    } else {
-      genresEl.style.display = "none";
-      genresEl.textContent = "";
-    }
+    becauseEl.textContent = data.matchExplanation
+      ? `Because you like: ${data.matchExplanation.replace(/^Because you like\\s*/i, "")}`
+      : "Because you like: —";
   }
 };
 
@@ -282,6 +211,9 @@ export const injectTopSection = (expandedRoot: HTMLElement, data: OverlayData): 
     currentRoot = expandedRoot;
     currentHost = buildTopSection(data);
     expandedRoot.insertBefore(currentHost, expandedRoot.firstChild);
+    requestAnimationFrame(() => {
+      currentHost?.classList.add("nxl-visible");
+    });
   }
 
   applyTopSectionData(data);
