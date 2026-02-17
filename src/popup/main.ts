@@ -1,7 +1,7 @@
 import { getStorage } from "../shared/storage";
 import { log } from "../shared/logger";
 import { STORAGE_KEYS } from "../shared/constants";
-import { buildLetterboxdKey } from "../shared/normalize";
+import { makeKey } from "../shared/normalize";
 import { unzipSync, strFromU8 } from "fflate";
 import type { LetterboxdIndex, LetterboxdStats } from "../shared/types";
 import { setLetterboxdIndex } from "../shared/storage";
@@ -110,7 +110,7 @@ const parseRatings = (csv: string, index: LetterboxdIndex) => {
     const ratingValue = parseFloat(getField(row, ratingIdx));
     if (Number.isNaN(ratingValue)) return;
 
-    const key = buildLetterboxdKey(title, year);
+    const key = makeKey(title, year);
     index.ratingsByKey[key] = ratingValue;
     count += 1;
   });
@@ -130,7 +130,7 @@ const parseWatchlist = (csv: string, index: LetterboxdIndex) => {
     const title = getField(row, nameIdx);
     if (!title) return;
     const year = parseYear(getField(row, yearIdx));
-    const key = buildLetterboxdKey(title, year);
+    const key = makeKey(title, year);
     index.watchlistKeys[key] = true;
     count += 1;
   });
@@ -408,6 +408,11 @@ const bindListeners = () => {
         [STORAGE_KEYS.LETTERBOXD_STATS]: stats,
         [STORAGE_KEYS.LAST_IMPORT_AT]: stats.importedAt
       });
+      console.log(
+        "LB_INDEX_SAVED",
+        Object.keys(index.ratingsByKey).length,
+        Object.keys(index.watchlistKeys).length
+      );
 
       log("Letterboxd ZIP imported", { ratingsCount, watchlistCount });
       chrome.runtime.sendMessage({ type: "LB_INDEX_UPDATED" }).catch((err) => {

@@ -1,7 +1,11 @@
 import { log } from "../../shared/logger";
 import { STORAGE_KEYS } from "../../shared/constants";
-import { buildLetterboxdKey, parseLetterboxdKey } from "../../shared/normalize";
-import type { LetterboxdIndex, ResolveTitleMessage } from "../../shared/types";
+import {
+  buildLegacyLetterboxdKey,
+  buildLetterboxdKey,
+  parseLetterboxdKey
+} from "../../shared/normalize";
+import type { LetterboxdIndex, ResolveOverlayDataMessage, ResolveTitleMessage } from "../../shared/types";
 import { getLetterboxdIndex as loadLetterboxdIndex } from "../../shared/storage";
 import {
   getTmdbApiKey,
@@ -39,7 +43,7 @@ const setMatchProfileCache = async (profile: MatchProfile) => {
 };
 
 export const resolveLetterboxdEntry = async (
-  payload: ResolveTitleMessage["payload"],
+  payload: ResolveTitleMessage["payload"] | ResolveOverlayDataMessage["payload"],
   resolvedTitle?: string,
   resolvedYear?: number
 ) => {
@@ -48,15 +52,28 @@ export const resolveLetterboxdEntry = async (
     log("LB_INDEX_LOADED", { found: false });
     return {};
   }
-  log("LB_INDEX_LOADED", { found: true, updatedAt: index.updatedAt });
+  log("LB_INDEX_LOADED", {
+    found: true,
+    updatedAt: index.updatedAt,
+    ratingsCount: Object.keys(index.ratingsByKey).length,
+    watchlistCount: Object.keys(index.watchlistKeys).length
+  });
   const keys = [
     buildLetterboxdKey(payload.titleText, payload.year),
     buildLetterboxdKey(resolvedTitle, resolvedYear),
     buildLetterboxdKey(payload.titleText, undefined),
     buildLetterboxdKey(resolvedTitle, undefined)
   ].filter((key) => key);
+  const legacyKeys = [
+    buildLegacyLetterboxdKey(payload.titleText, payload.year),
+    buildLegacyLetterboxdKey(resolvedTitle, resolvedYear),
+    buildLegacyLetterboxdKey(payload.titleText, undefined),
+    buildLegacyLetterboxdKey(resolvedTitle, undefined)
+  ].filter((key) => key);
+  const attemptedKeys = Array.from(new Set([...keys, ...legacyKeys]));
+  log("LB_MATCH_KEYS", { attemptedKeys });
 
-  for (const key of keys) {
+  for (const key of attemptedKeys) {
     if (index.watchlistKeys[key] || index.ratingsByKey[key] !== undefined) {
       log("LB_MATCH_FOUND", { key });
       return {
@@ -66,7 +83,7 @@ export const resolveLetterboxdEntry = async (
     }
   }
 
-  log("LB_MATCH_NOT_FOUND", { keys, title: resolvedTitle ?? payload.titleText });
+  log("LB_MATCH_NOT_FOUND", { attemptedKeys, title: resolvedTitle ?? payload.titleText });
   return {};
 };
 
@@ -164,8 +181,8 @@ export const buildMatchProfile = async (): Promise<MatchProfile | null> => {
 export const computeMatchScore = (
   profile: MatchProfile | null,
   candidateGenres: string[]
-): { matchScore?: number; matchExplanation?: string } => {
-  if (!profile || !candidateGenres.length) return {};
+): { matchPercent: number | null; becauseYouLike: string[] } => {
+  if (!profile || !candidateGenres.length) return { matchPercent: null, becauseYouLike: [] };
 
   let weightedSum = 0;
   let totalWeight = 0;
@@ -184,16 +201,14 @@ export const computeMatchScore = (
     }
   });
 
-  if (totalWeight === 0) return {};
+  if (totalWeight === 0) return { matchPercent: null, becauseYouLike: [] };
   const normalized = weightedSum / totalWeight;
   const score = Math.round(Math.max(0, Math.min(100, 50 + normalized * 20)));
 
   const topGenres = positives
     .sort((a, b) => b.strength - a.strength)
     .slice(0, 2)
-    .map((entry) => entry.genre);
-  const explanation =
-    topGenres.length > 0 ? `Because you like ${topGenres.join(", ")}` : undefined;
+    .map((entry) => entry.genre.replace(/\b\w/g, (letter) => letter.toUpperCase()));
 
-  return { matchScore: score, matchExplanation: explanation };
+  return { matchPercent: score, becauseYouLike: topGenres };
 };

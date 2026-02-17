@@ -34,6 +34,41 @@ export interface LetterboxdExport {
   films: LetterboxdFilm[];
 }
 
+export type OverlayData = {
+  title: string;
+  year?: number | null;
+  tmdb?: {
+    id: number | null;
+    voteAverage: number | null;
+    voteCount: number | null;
+  };
+  letterboxd?: {
+    inWatchlist: boolean;
+    userRating: number | null;
+    matchPercent: number | null;
+    becauseYouLike: string[];
+  };
+};
+
+export type ResolveOverlayDataPayload = {
+  netflixTitleId?: string;
+  titleText?: string;
+  year?: number;
+  href?: string;
+};
+
+export type ResolveOverlayDataMessage = {
+  type: "RESOLVE_OVERLAY_DATA";
+  requestId: string;
+  payload: ResolveOverlayDataPayload;
+};
+
+export type OverlayDataResolvedMessage = {
+  type: "OVERLAY_DATA_RESOLVED";
+  requestId: string;
+  payload: OverlayData;
+};
+
 export type ResolveTitlePayload = {
   netflixTitleId?: string;
   titleText?: string;
@@ -80,5 +115,7 @@ export type LetterboxdIndexUpdatedAckMessage = {
 
 export type ExtensionRuntimeMessage =
   | ExtensionMessage
+  | ResolveOverlayDataMessage
+  | OverlayDataResolvedMessage
   | LetterboxdIndexUpdatedMessage
   | LetterboxdIndexUpdatedAckMessage;

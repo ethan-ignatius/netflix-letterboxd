@@ -4,8 +4,10 @@ import { getStorage, setStorage } from "../../shared/storage";
 import { buildLetterboxdKey } from "../../shared/normalize";
 import type {
   LetterboxdIndexUpdatedAckMessage,
-  ResolveTitleMessage,
-  TitleResolvedMessage
+  LetterboxdIndexUpdatedMessage,
+  OverlayData,
+  OverlayDataResolvedMessage,
+  ResolveOverlayDataMessage
 } from "../../shared/types";
 import {
   detectActiveTitleContext,
@@ -39,14 +41,14 @@ let watchdogTimer: number | undefined;
 let lastRequestId = "";
 let lastOutlined: HTMLElement | null = null;
 let playbackActive = false;
-let lastResolvedPayload: TitleResolvedMessage["payload"] | null = null;
+let lastResolvedPayload: OverlayData | null = null;
 
 type NxlWindow = Window & {
   __nxlBooted?: boolean;
   __nxlDebug?: {
-    getIndex: () => Promise<Record<string, unknown>>;
-    forceRerender: () => void;
-    lastResolved: () => TitleResolvedMessage["payload"] | null;
+    getLbIndex: () => Promise<Record<string, unknown>>;
+    lastOverlayData: () => OverlayData | null;
+    forceResolve: () => void;
   };
 };
 
@@ -185,6 +187,22 @@ const findHoveredExpandedRoot = () => {
   return best;
 };
 
+const buildEmptyOverlayData = (title: string, year?: number): OverlayData => ({
+  title,
+  year: year ?? null,
+  tmdb: {
+    id: null,
+    voteAverage: null,
+    voteCount: null
+  },
+  letterboxd: {
+    inWatchlist: false,
+    userRating: null,
+    matchPercent: null,
+    becauseYouLike: []
+  }
+});
+
 const attemptResolve = (reason: string) => {
   if (!overlayEnabled) return;
   updatePlaybackState();
@@ -257,12 +275,12 @@ const attemptResolve = (reason: string) => {
     }
 
     overlayManager.mount(root);
-    overlayManager.update({});
+    overlayManager.update(buildEmptyOverlayData(normalizedTitle, year));
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     lastRequestId = requestId;
-    const message: ResolveTitleMessage = {
-      type: "RESOLVE_TITLE",
+    const message: ResolveOverlayDataMessage = {
+      type: "RESOLVE_OVERLAY_DATA",
       requestId,
       payload: {
         netflixTitleId,
@@ -272,28 +290,30 @@ const attemptResolve = (reason: string) => {
       }
     };
 
+    log("OVERLAY_REQUEST", { titleText: normalizedTitle, href, year });
+
     chrome.runtime
       .sendMessage(message)
-      .then((response: TitleResolvedMessage) => {
-        if (response?.type !== "TITLE_RESOLVED") return;
+      .then((response: OverlayDataResolvedMessage) => {
+        if (response?.type !== "OVERLAY_DATA_RESOLVED") return;
         if (response.requestId !== lastRequestId) return;
         lastResolvedPayload = response.payload;
-        log("Title resolved", { requestId, response });
-
-        overlayManager.update({
-          communityRating: response.payload.tmdbVoteAverage,
-          ratingCount: response.payload.tmdbVoteCount,
-          matchScore: response.payload.matchScore,
-          matchExplanation: response.payload.matchExplanation,
-          inWatchlist: response.payload.inWatchlist,
-          userRating: response.payload.userRating
+        log("OVERLAY_RESPONSE", {
+          requestId,
+          tmdb: response.payload.tmdb,
+          letterboxd: {
+            inWatchlist: response.payload.letterboxd?.inWatchlist ?? false,
+            userRating: response.payload.letterboxd?.userRating ?? null,
+            matchPercent: response.payload.letterboxd?.matchPercent ?? null,
+            becauseYouLikeCount: response.payload.letterboxd?.becauseYouLike?.length ?? 0
+          }
         });
 
+        overlayManager.update(response.payload);
+
         if (DEBUG) {
-          if (
-            response.payload.inWatchlist === undefined &&
-            response.payload.userRating === undefined
-          ) {
+          const lb = response.payload.letterboxd;
+          if (!lb || (!lb.inWatchlist && lb.userRating === null)) {
             const keyForLookup = buildLetterboxdKey(normalizedTitle, year);
             chrome.storage.local.get([STORAGE_KEYS.LETTERBOXD_INDEX]).then((data) => {
               if (!data[STORAGE_KEYS.LETTERBOXD_INDEX]) {
@@ -404,7 +424,13 @@ const handleKeydown = (event: KeyboardEvent) => {
 };
 
 const bindRuntimeMessages = () => {
-  chrome.runtime.onMessage.addListener((message: LetterboxdIndexUpdatedAckMessage) => {
+  chrome.runtime.onMessage.addListener(
+    (message: LetterboxdIndexUpdatedAckMessage | LetterboxdIndexUpdatedMessage) => {
+    if (message?.type === "LB_INDEX_UPDATED") {
+      log("LB_INDEX_UPDATED");
+      scheduleResolve("lb-index-updated");
+      return;
+    }
     if (message?.type === "LB_INDEX_UPDATED_ACK") {
       log("LB_INDEX_UPDATED_ACK", message.payload);
       scheduleResolve("lb-index-updated");
@@ -415,9 +441,9 @@ const bindRuntimeMessages = () => {
 const setDebugHook = () => {
   const win = getNxlWindow();
   win.__nxlDebug = {
-    getIndex: async () => chrome.storage.local.get(STORAGE_KEYS.LETTERBOXD_INDEX),
-    forceRerender: () => overlayManager.renderLast(),
-    lastResolved: () => lastResolvedPayload
+    getLbIndex: async () => chrome.storage.local.get(STORAGE_KEYS.LETTERBOXD_INDEX),
+    lastOverlayData: () => lastResolvedPayload,
+    forceResolve: () => attemptResolve("force")
   };
 };
 

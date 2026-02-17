@@ -1,7 +1,7 @@
 import { log } from "../../shared/logger";
 import { STORAGE_KEYS } from "../../shared/constants";
 import { buildTmdbCacheKey, normalizeTitle } from "../../shared/normalize";
-import type { ResolveTitleMessage, TitleResolvedMessage } from "../../shared/types";
+import type { ResolveOverlayDataMessage, ResolveTitleMessage, TitleResolvedMessage } from "../../shared/types";
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -95,7 +95,7 @@ const fetchJson = async (url: string) => {
 type ResolvedTitle = TitleResolvedMessage["payload"] & { tmdbGenres?: string[] };
 
 export const resolveTitleWithTmdb = async (
-  payload: ResolveTitleMessage["payload"]
+  payload: ResolveTitleMessage["payload"] | ResolveOverlayDataMessage["payload"]
 ): Promise<ResolvedTitle> => {
   const apiKey = await getTmdbApiKey();
   if (!apiKey || !payload.titleText) {

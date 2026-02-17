@@ -4,6 +4,8 @@ import type {
   ExtensionRuntimeMessage,
   LetterboxdIndexUpdatedAckMessage,
   LetterboxdIndexUpdatedMessage,
+  OverlayDataResolvedMessage,
+  ResolveOverlayDataMessage,
   ResolveTitleMessage,
   TitleResolvedMessage
 } from "../../shared/types";
@@ -32,6 +34,68 @@ export const registerMessageHandlers = () => {
           }
           sendResponse(ack);
         })();
+        return true;
+      }
+
+      if (message.type === "RESOLVE_OVERLAY_DATA") {
+        const { requestId, payload } = message as ResolveOverlayDataMessage;
+
+        void (async () => {
+          try {
+            const resolved = await resolveTitleWithTmdb(payload);
+            const lbData = await resolveLetterboxdEntry(
+              payload,
+              resolved.title,
+              resolved.releaseYear ?? payload.year
+            );
+            const profile = await buildMatchProfile();
+            const matchData = computeMatchScore(profile, resolved.tmdbGenres ?? []);
+
+            const response: OverlayDataResolvedMessage = {
+              type: "OVERLAY_DATA_RESOLVED",
+              requestId,
+              payload: {
+                title: resolved.title ?? payload.titleText ?? "Unknown title",
+                year: resolved.releaseYear ?? payload.year ?? null,
+                tmdb: {
+                  id: resolved.tmdbId ?? null,
+                  voteAverage: resolved.tmdbVoteAverage ?? null,
+                  voteCount: resolved.tmdbVoteCount ?? null
+                },
+                letterboxd: {
+                  inWatchlist: lbData.inWatchlist ?? false,
+                  userRating: lbData.userRating ?? null,
+                  matchPercent: matchData.matchPercent ?? null,
+                  becauseYouLike: matchData.becauseYouLike ?? []
+                }
+              }
+            };
+            sendResponse(response);
+          } catch (error) {
+            log("Overlay resolve failed", { error });
+            const response: OverlayDataResolvedMessage = {
+              type: "OVERLAY_DATA_RESOLVED",
+              requestId,
+              payload: {
+                title: payload.titleText ?? "Unknown title",
+                year: payload.year ?? null,
+                tmdb: {
+                  id: null,
+                  voteAverage: null,
+                  voteCount: null
+                },
+                letterboxd: {
+                  inWatchlist: false,
+                  userRating: null,
+                  matchPercent: null,
+                  becauseYouLike: []
+                }
+              }
+            };
+            sendResponse(response);
+          }
+        })();
+
         return true;
       }
 

@@ -1,5 +1,6 @@
 import { log, warn } from "./logger";
 import { STORAGE_KEYS } from "./constants";
+import { makeKey, parseLegacyLetterboxdKey } from "./normalize";
 import type { LetterboxdIndex, LetterboxdIndexLegacy, LetterboxdStats } from "./types";
 
 export interface StorageState {
@@ -46,15 +47,38 @@ export const getLetterboxdIndex = async (): Promise<LetterboxdIndex | null> => {
   if (!raw) return null;
 
   if ("ratingsByKey" in raw && "watchlistKeys" in raw) {
-    return raw as LetterboxdIndex;
+    const index = raw as LetterboxdIndex;
+    const needsMigration =
+      Object.keys(index.ratingsByKey).some((key) => key.includes("|")) ||
+      Object.keys(index.watchlistKeys).some((key) => key.includes("|"));
+    if (!needsMigration) return index;
+    const migratedRatings: Record<string, number> = {};
+    const migratedWatchlist: Record<string, true> = {};
+    Object.entries(index.ratingsByKey).forEach(([key, rating]) => {
+      const parsed = parseLegacyLetterboxdKey(key);
+      const nextKey = makeKey(parsed.title, parsed.year);
+      migratedRatings[nextKey] = rating;
+    });
+    Object.keys(index.watchlistKeys).forEach((key) => {
+      const parsed = parseLegacyLetterboxdKey(key);
+      const nextKey = makeKey(parsed.title, parsed.year);
+      migratedWatchlist[nextKey] = true;
+    });
+    return {
+      ratingsByKey: migratedRatings,
+      watchlistKeys: migratedWatchlist,
+      updatedAt: Date.now()
+    };
   }
 
   const legacy = raw as LetterboxdIndexLegacy;
   const ratingsByKey: Record<string, number> = {};
   const watchlistKeys: Record<string, true> = {};
   Object.entries(legacy).forEach(([key, entry]) => {
-    if (entry.r !== undefined) ratingsByKey[key] = entry.r;
-    if (entry.w === 1) watchlistKeys[key] = true;
+    const parsed = parseLegacyLetterboxdKey(key);
+    const nextKey = makeKey(parsed.title, parsed.year);
+    if (entry.r !== undefined) ratingsByKey[nextKey] = entry.r;
+    if (entry.w === 1) watchlistKeys[nextKey] = true;
   });
   return {
     ratingsByKey,

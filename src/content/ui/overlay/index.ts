@@ -1,11 +1,4 @@
-export interface OverlayData {
-  communityRating?: number;
-  ratingCount?: number;
-  matchScore?: number;
-  matchExplanation?: string;
-  inWatchlist?: boolean;
-  userRating?: number;
-}
+import type { OverlayData } from "../../../shared/types";
 
 const TOP_SECTION_ID = "nxlb-top-section";
 
@@ -179,8 +172,8 @@ const buildTopSection = (): HTMLDivElement => {
   return host;
 };
 
-const formatRatingCount = (value?: number) => {
-  if (value === undefined) return "";
+const formatRatingCount = (value: number | null | undefined) => {
+  if (value === undefined || value === null) return "";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return `${value}`;
@@ -194,16 +187,20 @@ const renderStars = (rating: number) => {
 };
 
 const applyTopSectionData = (host: HTMLDivElement, data: OverlayData) => {
+  const tmdbVoteAverage = data.tmdb?.voteAverage ?? null;
+  const tmdbVoteCount = data.tmdb?.voteCount ?? null;
+  const letterboxd = data.letterboxd;
   const communityEl = host.shadowRoot?.querySelector(
     "[data-field='communityRating']"
   ) as HTMLDivElement | null;
   if (communityEl) {
-    if (data.communityRating !== undefined) {
-      const count = formatRatingCount(data.ratingCount);
+    if (tmdbVoteAverage !== null && tmdbVoteAverage !== undefined) {
+      const count = formatRatingCount(tmdbVoteCount);
+      const ratingOutOfFive = tmdbVoteAverage / 2;
       communityEl.innerHTML = `
         Community rating:
         <span class="nxl-star">★</span>
-        ${data.communityRating.toFixed(1)}${
+        ${ratingOutOfFive.toFixed(1)}${
         count ? ` <span class="nxl-meta">${count} ratings</span>` : ""
       }
       `;
@@ -216,8 +213,8 @@ const applyTopSectionData = (host: HTMLDivElement, data: OverlayData) => {
     | HTMLDivElement
     | null;
   if (matchEl) {
-    if (data.matchScore !== undefined) {
-      matchEl.innerHTML = `Your match: <span class="nxl-match-value">${data.matchScore}%</span>`;
+    if (letterboxd?.matchPercent !== null && letterboxd?.matchPercent !== undefined) {
+      matchEl.innerHTML = `Your match: <span class="nxl-match-value">${letterboxd.matchPercent}%</span>`;
     } else {
       matchEl.textContent = "Your match: —";
     }
@@ -227,9 +224,9 @@ const applyTopSectionData = (host: HTMLDivElement, data: OverlayData) => {
     | HTMLDivElement
     | null;
   if (becauseEl) {
-    becauseEl.textContent = data.matchExplanation
-      ? `Because you like: ${data.matchExplanation.replace(/^Because you like\s*/i, "")}`
-      : "Because you like: —";
+    const list = letterboxd?.becauseYouLike ?? [];
+    becauseEl.textContent =
+      list.length > 0 ? `Because you like: ${list.join(", ")}` : "Because you like: —";
   }
 
   const badgesEl = host.shadowRoot?.querySelector("[data-field='badges']") as
@@ -237,19 +234,19 @@ const applyTopSectionData = (host: HTMLDivElement, data: OverlayData) => {
     | null;
   if (badgesEl) {
     badgesEl.innerHTML = "";
-    if (data.inWatchlist) {
+    if (letterboxd?.inWatchlist) {
       const badge = document.createElement("span");
       badge.className = "nxl-badge";
-      badge.textContent = "On watchlist";
+      badge.textContent = "On your watchlist";
       badgesEl.appendChild(badge);
     }
-    if (data.userRating !== undefined) {
+    if (letterboxd?.userRating !== null && letterboxd?.userRating !== undefined) {
       const badge = document.createElement("span");
       badge.className = "nxl-badge";
-      badge.textContent = `You rated ${renderStars(data.userRating)}`;
+      badge.textContent = `You rated ${renderStars(letterboxd.userRating)}`;
       badgesEl.appendChild(badge);
     }
-    if (!data.inWatchlist && data.userRating === undefined) {
+    if (!letterboxd?.inWatchlist && letterboxd?.userRating === undefined) {
       const badge = document.createElement("span");
       badge.className = "nxl-badge";
       badge.textContent = "Letterboxd: —";
@@ -261,7 +258,7 @@ const applyTopSectionData = (host: HTMLDivElement, data: OverlayData) => {
 export const createOverlayManager = () => {
   let currentRoot: HTMLElement | null = null;
   let host: HTMLDivElement | null = null;
-  let lastData: OverlayData = {};
+  let lastData: OverlayData | null = null;
 
   const ensureHost = () => {
     if (!host) host = buildTopSection();
@@ -281,8 +278,8 @@ export const createOverlayManager = () => {
   };
 
   const update = (data: OverlayData) => {
-    lastData = { ...lastData, ...data };
-    if (host) applyTopSectionData(host, lastData);
+    lastData = data;
+    if (host) applyTopSectionData(host, data);
   };
 
   const unmount = () => {
@@ -291,7 +288,7 @@ export const createOverlayManager = () => {
   };
 
   const renderLast = () => {
-    if (host) applyTopSectionData(host, lastData);
+    if (host && lastData) applyTopSectionData(host, lastData);
   };
 
   return {
