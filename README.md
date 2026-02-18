@@ -31,3 +31,11 @@ npm run dev
 2. Paste your TMDb API key and save.
 3. Upload your Letterboxd export ZIP.
 4. Hover an expanded Netflix title card to see ratings, match score, and badges.
+
+## Preview
+
+<p align="center">
+  <img src="./docs/images/overlay-preview.png" width="750" />
+  <br />
+  <em>Overlay with TMDb community rating and Letterboxd-powered match insights.</em>
+</p>
