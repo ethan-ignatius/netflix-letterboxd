@@ -225,8 +225,13 @@ const applyTopSectionData = (host: HTMLDivElement, data: OverlayData) => {
     | null;
   if (becauseEl) {
     const list = letterboxd?.becauseYouLike ?? [];
-    becauseEl.textContent =
-      list.length > 0 ? `Because you like: ${list.join(", ")}` : "Because you like: —";
+    if (list.length > 0) {
+      becauseEl.style.display = "block";
+      becauseEl.textContent = `Because you like: ${list.join(", ")}`;
+    } else {
+      becauseEl.style.display = "none";
+      becauseEl.textContent = "";
+    }
   }
 
   const badgesEl = host.shadowRoot?.querySelector("[data-field='badges']") as

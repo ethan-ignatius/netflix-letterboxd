@@ -9,7 +9,7 @@ import type {
   ResolveTitleMessage,
   TitleResolvedMessage
 } from "../../shared/types";
-import { resolveTitleWithTmdb } from "../tmdb";
+import { getTmdbApiKey, resolveTitleWithTmdb } from "../tmdb";
 import { buildMatchProfile, computeMatchScore, resolveLetterboxdEntry } from "../letterboxd";
 
 export const registerMessageHandlers = () => {
@@ -38,10 +38,39 @@ export const registerMessageHandlers = () => {
       }
 
       if (message.type === "RESOLVE_OVERLAY_DATA") {
-        const { requestId, payload } = message as ResolveOverlayDataMessage;
+        const { requestId, extracted } = message as ResolveOverlayDataMessage;
+        const payload = extracted;
 
         void (async () => {
           try {
+            const tmdbKey = await getTmdbApiKey();
+            if (!tmdbKey) {
+              log("TMDB_KEY_MISSING");
+              const lbData = await resolveLetterboxdEntry(payload, payload.titleText, payload.year);
+              const response: OverlayDataResolvedMessage = {
+                type: "OVERLAY_DATA_RESOLVED",
+                requestId,
+                error: "TMDB_KEY_MISSING",
+                payload: {
+                  title: payload.titleText ?? "Unknown title",
+                  year: payload.year ?? null,
+                  tmdb: {
+                    id: null,
+                    voteAverage: null,
+                    voteCount: null
+                  },
+                  letterboxd: {
+                    inWatchlist: lbData.inWatchlist ?? false,
+                    userRating: lbData.userRating ?? null,
+                    matchPercent: null,
+                    becauseYouLike: []
+                  }
+                }
+              };
+              sendResponse(response);
+              return;
+            }
+
             const resolved = await resolveTitleWithTmdb(payload);
             const lbData = await resolveLetterboxdEntry(
               payload,
