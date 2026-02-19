@@ -60,14 +60,13 @@ export type ResolveOverlayDataPayload = {
 export type ResolveOverlayDataMessage = {
   type: "RESOLVE_OVERLAY_DATA";
   requestId: string;
-  extracted: ResolveOverlayDataPayload;
+  payload: ResolveOverlayDataPayload;
 };
 
 export type OverlayDataResolvedMessage = {
   type: "OVERLAY_DATA_RESOLVED";
   requestId: string;
   payload: OverlayData;
-  error?: "TMDB_KEY_MISSING";
 };
 
 export type ResolveTitlePayload = {

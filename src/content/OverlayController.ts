@@ -159,9 +159,8 @@ export class OverlayController {
 
     log("OVERLAY_REQUEST_SENT", { titleText: extracted.titleText, id: extracted.netflixTitleId });
 
-    chrome.runtime
-      .sendMessage(message)
-      .then((response: OverlayDataResolvedMessage) => {
+    this.safeSendMessage(message).then((response: OverlayDataResolvedMessage | null) => {
+      if (!response) return;
         if (!response || response.type !== "OVERLAY_DATA_RESOLVED") return;
         if (response.requestId !== this.currentRequestId) {
           log("OVERLAY_RESPONSE_IGNORED_STALE", { requestId: response.requestId });
@@ -176,9 +175,6 @@ export class OverlayController {
         if (response.error === "TMDB_KEY_MISSING") {
           log("TMDB_KEY_MISSING");
         }
-      })
-      .catch((err) => {
-        log("Overlay resolve failed", { err });
       });
   }
 
@@ -287,6 +283,16 @@ export class OverlayController {
         }
       }
     );
+  }
+
+  private async safeSendMessage<T>(message: T): Promise<OverlayDataResolvedMessage | null> {
+    try {
+      if (!chrome.runtime?.id) return null;
+      return (await chrome.runtime.sendMessage(message)) as OverlayDataResolvedMessage;
+    } catch (error) {
+      log("Extension context invalidated", { error });
+      return null;
+    }
   }
 
   private bindStorageListener(): void {
