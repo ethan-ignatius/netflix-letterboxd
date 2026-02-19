@@ -43,13 +43,12 @@ const setMatchProfileCache = async (profile: MatchProfile) => {
 };
 
 export const resolveLetterboxdEntry = async (
-  payload: ResolveTitleMessage["payload"] | ResolveOverlayDataMessage["extracted"],
+  payload: ResolveTitleMessage["payload"] | ResolveOverlayDataMessage["payload"],
   resolvedTitle?: string,
   resolvedYear?: number
 ) => {
   const index = await getLetterboxdIndex();
   if (!index) {
-    log("LB_INDEX_MISSING");
     log("LB_INDEX_LOADED", { found: false });
     return {};
   }
@@ -182,15 +181,8 @@ export const buildMatchProfile = async (): Promise<MatchProfile | null> => {
 export const computeMatchScore = (
   profile: MatchProfile | null,
   candidateGenres: string[]
-): {
-  matchPercent: number | null;
-  becauseYouLike: string[];
-  matchScore?: number;
-  matchExplanation?: string;
-} => {
-  if (!profile || !candidateGenres.length) {
-    return { matchPercent: null, becauseYouLike: [] };
-  }
+): { matchPercent: number | null; becauseYouLike: string[] } => {
+  if (!profile || !candidateGenres.length) return { matchPercent: null, becauseYouLike: [] };
 
   let weightedSum = 0;
   let totalWeight = 0;
@@ -218,13 +210,5 @@ export const computeMatchScore = (
     .slice(0, 2)
     .map((entry) => entry.genre.replace(/\b\w/g, (letter) => letter.toUpperCase()));
 
-  const explanation =
-    topGenres.length > 0 ? `Because you like ${topGenres.join(", ")}` : undefined;
-
-  return {
-    matchPercent: score,
-    becauseYouLike: topGenres,
-    matchScore: score,
-    matchExplanation: explanation
-  };
+  return { matchPercent: score, becauseYouLike: topGenres };
 };

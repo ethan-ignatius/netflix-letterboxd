@@ -1,10 +1,8 @@
 import { log } from "../shared/logger";
-import { OverlayController } from "./OverlayController";
-
-const controller = new OverlayController();
+import { initNetflixObserver } from "./netflix/observer";
 
 const init = async () => {
-  controller.init();
+  await initNetflixObserver();
 };
 
 if (document.readyState === "loading") {

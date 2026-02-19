@@ -95,7 +95,7 @@ const fetchJson = async (url: string) => {
 type ResolvedTitle = TitleResolvedMessage["payload"] & { tmdbGenres?: string[] };
 
 export const resolveTitleWithTmdb = async (
-  payload: ResolveTitleMessage["payload"] | ResolveOverlayDataMessage["extracted"]
+  payload: ResolveTitleMessage["payload"] | ResolveOverlayDataMessage["payload"]
 ): Promise<ResolvedTitle> => {
   const apiKey = await getTmdbApiKey();
   if (!apiKey || !payload.titleText) {
