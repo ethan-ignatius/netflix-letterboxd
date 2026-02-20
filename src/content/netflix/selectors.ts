@@ -478,7 +478,7 @@ export const findActiveJawbone = (): {
   rejectedCount?: number;
   chosenTitleElement?: Element;
 } => {
-  const candidates = findExpandedContainers();
+  const candidates = collectJawboneCandidates();
   const maxWidth = window.innerWidth * 0.85;
   const maxHeight = window.innerHeight * 0.6;
 
@@ -490,9 +490,11 @@ export const findActiveJawbone = (): {
     const metadata = hasMetadataSection(candidate);
     if (!preview || !controls) continue;
 
+    const anchor = candidate.querySelector<HTMLAnchorElement>("a[href^='/title/']");
+    if (!anchor) continue;
+
     const display = extractDisplayTitle(candidate as HTMLElement);
     let title = display.title ?? null;
-    const anchor = candidate.querySelector<HTMLAnchorElement>("a[href^='/title/']");
     if (!title && anchor) {
       const anchorTitle = extractTitleFromAnchor(anchor);
       if (anchorTitle) title = normalizeNetflixTitle(anchorTitle) ?? anchorTitle;
