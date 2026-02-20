@@ -58,6 +58,9 @@ const EPISODE_TITLE_PATTERN =
 const EPISODE_TIME_PATTERN = /(\b\d+\s*(m|min|minutes)\b|\b\d+\s*of\s*\d+\s*(m|min|minutes)\b)/i;
 const METADATA_TEXT_PATTERN =
   /\b(tv-[a-z0-9]+|pg-?13|pg|tv-ma|tv-y|tv-g|nr|nc-17|hd|uhd|4k|seasons?|season|episode|volume|part\s+\d+)\b/i;
+const ACTION_TEXT_PATTERN =
+  /^(play|resume|continue|more info|details|watch|watch now|watch again|add|added|my list|remove|rate|like|dislike|thumbs up|thumbs down)$/i;
+const CONTEXT_TEXT_PATTERN = /because you watched/i;
 
 const METADATA_SELECTORS = [
   "[data-uia*='maturity-rating']",
@@ -296,6 +299,8 @@ const isInHeaderRegion = (el: Element) =>
 
 const isBannedTitleText = (text: string) => {
   if (NAV_BANNED_PATTERN.test(text)) return true;
+  if (ACTION_TEXT_PATTERN.test(text.trim())) return true;
+  if (CONTEXT_TEXT_PATTERN.test(text)) return true;
   if (METADATA_TEXT_PATTERN.test(text)) return true;
   return (
     EPISODE_TITLE_PATTERN.test(text) ||
@@ -316,6 +321,16 @@ const isInProgressRegion = (el: Element, controlsTop?: number) => {
   return false;
 };
 
+const isInControlsRegion = (el: Element, controls?: Element | null) => {
+  if (!el) return false;
+  if (controls && (controls.contains(el) || el.closest("button, [role='button']"))) {
+    return true;
+  }
+  return Boolean(
+    el.closest("button, [role='button'], [data-uia*='play'], [data-uia*='button']")
+  );
+};
+
 export const extractDisplayTitle = (expandedRoot: HTMLElement): {
   title: string | null;
   chosen?: Element;
@@ -331,6 +346,10 @@ export const extractDisplayTitle = (expandedRoot: HTMLElement): {
 
   candidates.forEach((el) => {
     if (!isVisible(el)) {
+      rejectedCount += 1;
+      return;
+    }
+    if (isInControlsRegion(el, controls)) {
       rejectedCount += 1;
       return;
     }
@@ -379,6 +398,7 @@ export const extractDisplayTitle = (expandedRoot: HTMLElement): {
       ).filter((el) => el !== episodeNode);
       for (const sibling of siblingCandidates) {
         if (!isVisible(sibling)) continue;
+        if (isInControlsRegion(sibling, controls)) continue;
         if (isInProgressRegion(sibling, controlsTop)) continue;
         const text = normalizeText(sibling.textContent);
         if (!text || text.length < 2 || text.length > 80) continue;
@@ -412,6 +432,7 @@ export const extractDisplayTitle = (expandedRoot: HTMLElement): {
       const nearby = Array.from(current.querySelectorAll(TITLE_LIKE_SELECTORS.join(",")));
       for (const node of nearby) {
         if (!isVisible(node)) continue;
+        if (isInControlsRegion(node, controls)) continue;
         if (isInProgressRegion(node, controlsTop)) continue;
         const text = normalizeText(node.textContent);
         if (!text || text.length < 2 || text.length > 80) continue;
@@ -472,6 +493,49 @@ const extractTitleFromAnchor = (anchor: HTMLAnchorElement): string | undefined =
   return undefined;
 };
 
+const getBestTitleAnchor = (
+  root: HTMLElement,
+  previewEl?: Element | null,
+  controls?: Element | null
+) => {
+  const anchors = Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href^='/title/']"));
+  const visibleAnchors = anchors.filter((anchor) => isVisible(anchor));
+  if (!visibleAnchors.length) return null;
+
+  const previewRect = previewEl?.getBoundingClientRect();
+  let best: { anchor: HTMLAnchorElement; score: number } | null = null;
+
+  visibleAnchors.forEach((anchor) => {
+    if (isInHeaderRegion(anchor)) return;
+    if (isInControlsRegion(anchor, controls)) return;
+    const rect = anchor.getBoundingClientRect();
+    const area = rect.width * rect.height;
+    let score = 0;
+
+    if (previewEl && (anchor.contains(previewEl) || previewEl.contains(anchor))) {
+      score += 1000;
+    }
+
+    if (previewRect) {
+      const dx = rect.left + rect.width / 2 - (previewRect.left + previewRect.width / 2);
+      const dy = rect.top + rect.height / 2 - (previewRect.top + previewRect.height / 2);
+      const dist = Math.hypot(dx, dy);
+      score += Math.max(0, 500 - dist);
+    }
+
+    score += Math.min(area / 100, 200);
+
+    const anchorTitle = extractTitleFromAnchor(anchor);
+    if (anchorTitle) score += 50;
+
+    if (!best || score > best.score) {
+      best = { anchor, score };
+    }
+  });
+
+  return best?.anchor ?? null;
+};
+
 export const findActiveJawbone = (): {
   jawboneEl: HTMLElement | null;
   extracted: ExtractedTitleInfo | null;
@@ -490,14 +554,15 @@ export const findActiveJawbone = (): {
     const metadata = hasMetadataSection(candidate);
     if (!preview || !controls) continue;
 
-    const anchor = candidate.querySelector<HTMLAnchorElement>("a[href^='/title/']");
-    if (!anchor) continue;
+    const anchor = getBestTitleAnchor(candidate as HTMLElement, preview, controls);
 
     const display = extractDisplayTitle(candidate as HTMLElement);
     let title = display.title ?? null;
-    if (!title && anchor) {
+    if (anchor) {
       const anchorTitle = extractTitleFromAnchor(anchor);
-      if (anchorTitle) title = normalizeNetflixTitle(anchorTitle) ?? anchorTitle;
+      if (anchorTitle) {
+        title = normalizeNetflixTitle(anchorTitle) ?? anchorTitle;
+      }
     }
     if (!title && !metadata) continue;
     if (!title && metadata) {
