@@ -5,7 +5,7 @@ import {
   buildLetterboxdKey,
   parseLetterboxdKey
 } from "../../shared/normalize";
-import type { LetterboxdIndex, ResolveOverlayDataMessage, ResolveTitleMessage } from "../../shared/types";
+import type { ExtractedTitleInfo, LetterboxdIndex, ResolveTitleMessage } from "../../shared/types";
 import { getLetterboxdIndex as loadLetterboxdIndex } from "../../shared/storage";
 import {
   getTmdbApiKey,
@@ -43,7 +43,7 @@ const setMatchProfileCache = async (profile: MatchProfile) => {
 };
 
 export const resolveLetterboxdEntry = async (
-  payload: ResolveTitleMessage["payload"] | ResolveOverlayDataMessage["payload"],
+  payload: ResolveTitleMessage["payload"] | ExtractedTitleInfo,
   resolvedTitle?: string,
   resolvedYear?: number
 ) => {
@@ -58,16 +58,19 @@ export const resolveLetterboxdEntry = async (
     ratingsCount: Object.keys(index.ratingsByKey).length,
     watchlistCount: Object.keys(index.watchlistKeys).length
   });
+  const payloadTitle = "rawTitle" in payload ? payload.rawTitle : payload.titleText;
+  const payloadYear = "rawTitle" in payload ? payload.year ?? undefined : payload.year;
+
   const keys = [
-    buildLetterboxdKey(payload.titleText, payload.year),
+    buildLetterboxdKey(payloadTitle, payloadYear),
     buildLetterboxdKey(resolvedTitle, resolvedYear),
-    buildLetterboxdKey(payload.titleText, undefined),
+    buildLetterboxdKey(payloadTitle, undefined),
     buildLetterboxdKey(resolvedTitle, undefined)
   ].filter((key) => key);
   const legacyKeys = [
-    buildLegacyLetterboxdKey(payload.titleText, payload.year),
+    buildLegacyLetterboxdKey(payloadTitle, payloadYear),
     buildLegacyLetterboxdKey(resolvedTitle, resolvedYear),
-    buildLegacyLetterboxdKey(payload.titleText, undefined),
+    buildLegacyLetterboxdKey(payloadTitle, undefined),
     buildLegacyLetterboxdKey(resolvedTitle, undefined)
   ].filter((key) => key);
   const attemptedKeys = Array.from(new Set([...keys, ...legacyKeys]));
@@ -83,7 +86,7 @@ export const resolveLetterboxdEntry = async (
     }
   }
 
-  log("LB_MATCH_NOT_FOUND", { attemptedKeys, title: resolvedTitle ?? payload.titleText });
+  log("LB_MATCH_NOT_FOUND", { attemptedKeys, title: resolvedTitle ?? payloadTitle });
   return {};
 };
 

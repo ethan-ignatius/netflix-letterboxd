@@ -5,18 +5,13 @@ import { buildLetterboxdKey } from "../../shared/normalize";
 import type {
   LetterboxdIndexUpdatedAckMessage,
   LetterboxdIndexUpdatedMessage,
+  ExtractedTitleInfo,
   OverlayData,
   OverlayDataResolvedMessage,
   ResolveOverlayDataMessage
 } from "../../shared/types";
 import {
-  detectActiveTitleContext,
-  extractDisplayTitle,
-  findExpandedRoot,
-  findPreviewElement,
-  getRawTitleText,
-  normalizeNetflixTitle,
-  EXPANDED_CONTAINER_SELECTOR
+  findActiveJawbone
 } from "./selectors";
 import { createOverlayManager } from "../ui/overlay";
 import { setBadgeVisible } from "../ui/badge";
@@ -155,36 +150,13 @@ const setBadgeForState = () => {
   }
 };
 
-const serializeCandidateKey = (titleText?: string, year?: number, href?: string) => {
-  return [titleText ?? "", year ?? "", href ?? ""].join("|");
-};
-
-const parseYearFromText = (text?: string) => {
-  if (!text) return undefined;
-  const match = text.match(/(19\d{2}|20\d{2})/);
-  if (!match) return undefined;
-  const year = Number(match[1]);
-  return Number.isNaN(year) ? undefined : year;
-};
-
-const findHoveredExpandedRoot = () => {
-  const hovered = Array.from(document.querySelectorAll(":hover"));
-  if (!hovered.length) return null;
-  const candidates = hovered
-    .map((el) => (el as Element).closest(EXPANDED_CONTAINER_SELECTOR) ?? (el as Element))
-    .filter(Boolean) as Element[];
-  let best: HTMLElement | null = null;
-  let bestArea = 0;
-  candidates.forEach((candidate) => {
-    const rect = candidate.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    const area = rect.width * rect.height;
-    if (area > bestArea) {
-      bestArea = area;
-      best = candidate as HTMLElement;
-    }
-  });
-  return best;
+const serializeCandidateKey = (info: ExtractedTitleInfo) => {
+  return [
+    info.normalizedTitle ?? "",
+    info.year ?? "",
+    info.netflixId ?? "",
+    info.href ?? ""
+  ].join("|");
 };
 
 const buildEmptyOverlayData = (title: string, year?: number): OverlayData => ({
@@ -209,134 +181,104 @@ const attemptResolve = (reason: string) => {
   if (playbackActive) return;
 
   if (DEBUG) log("OVERLAY_MOUNT_ATTEMPT", { reason });
+  const jawbone = findActiveJawbone();
+  const root = jawbone.jawboneEl;
+  const extracted = jawbone.extracted;
 
-  const strategies: Array<{
-    name: string;
-    root: HTMLElement | null;
-    candidate?: ReturnType<typeof detectActiveTitleContext>["candidate"] | null;
-  }> = [];
-
-  const detected = detectActiveTitleContext();
-  const detectedRoot = findExpandedRoot() ?? (detected.container as HTMLElement | null);
-  strategies.push({ name: "detect-active", root: detectedRoot, candidate: detected.candidate });
-
-  const expandedRoot = findExpandedRoot();
-  strategies.push({ name: "expanded-root", root: expandedRoot, candidate: null });
-
-  const hoveredRoot = findHoveredExpandedRoot();
-  strategies.push({ name: "hovered", root: hoveredRoot, candidate: null });
-
-  for (const strategy of strategies) {
-    const root = strategy.root;
-    if (!root) continue;
-    if (isHeroSized(root)) continue;
-    const previewEl = findPreviewElement(root);
-    if (!previewEl) continue;
-
-    const anchorInRoot = root.querySelector("a[href^='/title/']") as HTMLAnchorElement | null;
-    const href = anchorInRoot?.getAttribute("href") ?? undefined;
-    const idMatch = href?.match(/\/title\/(\d+)/);
-    const netflixTitleId = idMatch?.[1] ?? strategy.candidate?.netflixTitleId;
-
-    const displayTitle = extractDisplayTitle(root);
-    const resolvedTitle = displayTitle.title ?? strategy.candidate?.titleText;
-    if (!resolvedTitle) {
-      if (DEBUG) log("OVERLAY_MOUNT_FAILED", { reason: "no-display-title", strategy: strategy.name });
-      continue;
-    }
-
-    const normalizedTitle = normalizeNetflixTitle(resolvedTitle) ?? resolvedTitle;
-    const year = parseYearFromText(normalizedTitle);
-    const key = serializeCandidateKey(normalizedTitle, year, href);
-
-    if (key === lastActiveKey && root === lastContainer) {
-      if (DEBUG) log("OVERLAY_MOUNT_SUCCESS", { strategy: strategy.name, reused: true });
-      return;
-    }
-
-    lastActiveKey = key;
-    lastContainer = root;
-    updateDebugOutline(root);
-
-    if (DEBUG) {
-      const rawTitle = getRawTitleText(root);
-      log("OVERLAY_MOUNT_SUCCESS", {
-        strategy: strategy.name,
-        titleText: normalizedTitle,
-        href,
-        netflixTitleId,
-        rawTitle,
-        container: describeElement(root),
-        rejectedTitleCandidates: displayTitle.rejectedCount,
-        chosenTitleElement: displayTitle.chosen
-          ? displayTitle.chosen.outerHTML.slice(0, 200)
-          : undefined
-      });
-    }
-
-    overlayManager.mount(root);
-    overlayManager.update(buildEmptyOverlayData(normalizedTitle, year));
-
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    lastRequestId = requestId;
-    const message: ResolveOverlayDataMessage = {
-      type: "RESOLVE_OVERLAY_DATA",
-      requestId,
-      payload: {
-        netflixTitleId,
-        titleText: normalizedTitle,
-        year,
-        href
-      }
-    };
-
-    log("OVERLAY_REQUEST", { titleText: normalizedTitle, href, year });
-
-    chrome.runtime
-      .sendMessage(message)
-      .then((response: OverlayDataResolvedMessage) => {
-        if (response?.type !== "OVERLAY_DATA_RESOLVED") return;
-        if (response.requestId !== lastRequestId) return;
-        lastResolvedPayload = response.payload;
-        log("OVERLAY_RESPONSE", {
-          requestId,
-          tmdb: response.payload.tmdb,
-          letterboxd: {
-            inWatchlist: response.payload.letterboxd?.inWatchlist ?? false,
-            userRating: response.payload.letterboxd?.userRating ?? null,
-            matchPercent: response.payload.letterboxd?.matchPercent ?? null,
-            becauseYouLikeCount: response.payload.letterboxd?.becauseYouLike?.length ?? 0
-          }
-        });
-
-        overlayManager.update(response.payload);
-
-        if (DEBUG) {
-          const lb = response.payload.letterboxd;
-          if (!lb || (!lb.inWatchlist && lb.userRating === null)) {
-            const keyForLookup = buildLetterboxdKey(normalizedTitle, year);
-            chrome.storage.local.get([STORAGE_KEYS.LETTERBOXD_INDEX]).then((data) => {
-              if (!data[STORAGE_KEYS.LETTERBOXD_INDEX]) {
-                log("LB_MATCH_NOT_FOUND", { reason: "no-index", key: keyForLookup });
-              } else if (!year) {
-                log("LB_MATCH_NOT_FOUND", { reason: "missing-year", key: keyForLookup });
-              } else {
-                log("LB_MATCH_NOT_FOUND", { reason: "no-key", key: keyForLookup });
-              }
-            });
-          }
-        }
-      })
-      .catch((err) => {
-        log("Title resolve failed", { requestId, err });
-      });
-
+  if (!root || !extracted) {
+    if (DEBUG) log("OVERLAY_MOUNT_FAILED", { reason: "no-jawbone" });
+    overlayManager.unmount();
+    updateDebugOutline(null);
     return;
   }
 
-  if (DEBUG) log("OVERLAY_MOUNT_FAILED", { reason: "no-strategy" });
-  overlayManager.unmount();
-  updateDebugOutline(null);
+  if (isHeroSized(root)) {
+    if (DEBUG) log("OVERLAY_MOUNT_FAILED", { reason: "hero-sized" });
+    overlayManager.unmount();
+    updateDebugOutline(null);
+    return;
+  }
+
+  if (DEBUG) {
+    log("ACTIVE_JAWBONE_FOUND", {
+      rawTitle: extracted.rawTitle,
+      netflixId: extracted.netflixId,
+      year: extracted.year,
+      isSeries: extracted.isSeries,
+      rejectedTitleCandidates: jawbone.rejectedCount,
+      chosenTitleElement: jawbone.chosenTitleElement
+        ? jawbone.chosenTitleElement.outerHTML.slice(0, 200)
+        : undefined
+    });
+    log("EXTRACTED_TITLE_INFO", extracted);
+  }
+
+  const key = serializeCandidateKey(extracted);
+  if (key === lastActiveKey && root === lastContainer) {
+    if (DEBUG) log("OVERLAY_MOUNT_SUCCESS", { reused: true });
+    return;
+  }
+
+  lastActiveKey = key;
+  lastContainer = root;
+  updateDebugOutline(root);
+
+  overlayManager.mount(root);
+  overlayManager.update(buildEmptyOverlayData(extracted.rawTitle, extracted.year ?? undefined));
+
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  lastRequestId = requestId;
+  const message: ResolveOverlayDataMessage = {
+    type: "RESOLVE_OVERLAY_DATA",
+    requestId,
+    payload: extracted
+  };
+
+  log("OVERLAY_REQUEST", {
+    titleText: extracted.rawTitle,
+    normalizedTitle: extracted.normalizedTitle,
+    href: extracted.href,
+    year: extracted.year
+  });
+
+  chrome.runtime
+    .sendMessage(message)
+    .then((response: OverlayDataResolvedMessage) => {
+      if (response?.type !== "OVERLAY_DATA_RESOLVED") return;
+      if (response.requestId !== lastRequestId) return;
+      lastResolvedPayload = response.payload;
+      log("OVERLAY_RESPONSE", {
+        requestId,
+        tmdb: response.payload.tmdb,
+        letterboxd: {
+          inWatchlist: response.payload.letterboxd?.inWatchlist ?? false,
+          userRating: response.payload.letterboxd?.userRating ?? null,
+          matchPercent: response.payload.letterboxd?.matchPercent ?? null,
+          becauseYouLikeCount: response.payload.letterboxd?.becauseYouLike?.length ?? 0
+        }
+      });
+
+      overlayManager.update(response.payload);
+
+      if (DEBUG) {
+        const lb = response.payload.letterboxd;
+        if (!lb || (!lb.inWatchlist && lb.userRating === null)) {
+          const keyForLookup = buildLetterboxdKey(extracted.rawTitle, extracted.year ?? undefined);
+          chrome.storage.local.get([STORAGE_KEYS.LETTERBOXD_INDEX]).then((data) => {
+            if (!data[STORAGE_KEYS.LETTERBOXD_INDEX]) {
+              log("LB_MATCH_NOT_FOUND", { reason: "no-index", key: keyForLookup });
+            } else if (!extracted.year) {
+              log("LB_MATCH_NOT_FOUND", { reason: "missing-year", key: keyForLookup });
+            } else {
+              log("LB_MATCH_NOT_FOUND", { reason: "no-key", key: keyForLookup });
+            }
+          });
+        }
+      }
+    })
+    .catch((err) => {
+      log("Title resolve failed", { requestId, err });
+    });
 };
 
 const scheduleResolve = (reason: string) => {

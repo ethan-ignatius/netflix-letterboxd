@@ -46,7 +46,7 @@ export const registerMessageHandlers = () => {
             const lbData = await resolveLetterboxdEntry(
               payload,
               resolved.title,
-              resolved.releaseYear ?? payload.year
+              resolved.releaseYear ?? payload.year ?? undefined
             );
             const profile = await buildMatchProfile();
             const matchData = computeMatchScore(profile, resolved.tmdbGenres ?? []);
@@ -55,7 +55,7 @@ export const registerMessageHandlers = () => {
               type: "OVERLAY_DATA_RESOLVED",
               requestId,
               payload: {
-                title: resolved.title ?? payload.titleText ?? "Unknown title",
+                title: resolved.title ?? payload.rawTitle ?? "Unknown title",
                 year: resolved.releaseYear ?? payload.year ?? null,
                 tmdb: {
                   id: resolved.tmdbId ?? null,
@@ -77,7 +77,7 @@ export const registerMessageHandlers = () => {
               type: "OVERLAY_DATA_RESOLVED",
               requestId,
               payload: {
-                title: payload.titleText ?? "Unknown title",
+                title: payload.rawTitle ?? "Unknown title",
                 year: payload.year ?? null,
                 tmdb: {
                   id: null,

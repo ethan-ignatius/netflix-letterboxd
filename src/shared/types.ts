@@ -50,12 +50,16 @@ export type OverlayData = {
   };
 };
 
-export type ResolveOverlayDataPayload = {
-  netflixTitleId?: string;
-  titleText?: string;
-  year?: number;
-  href?: string;
+export type ExtractedTitleInfo = {
+  rawTitle: string;
+  normalizedTitle: string;
+  year?: number | null;
+  isSeries?: boolean;
+  netflixId?: string | null;
+  href?: string | null;
 };
+
+export type ResolveOverlayDataPayload = ExtractedTitleInfo;
 
 export type ResolveOverlayDataMessage = {
   type: "RESOLVE_OVERLAY_DATA";

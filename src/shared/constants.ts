@@ -1,4 +1,4 @@
-export const DEBUG = import.meta.env.DEV;
+export const DEBUG = true;
 
 export const STORAGE_KEYS = {
   OVERLAY_ENABLED: "overlayEnabled",

@@ -1,3 +1,6 @@
+import { normalizeTitle } from "../../shared/normalize";
+import type { ExtractedTitleInfo } from "../../shared/types";
+
 export interface ActiveTitleCandidate {
   netflixTitleId?: string;
   titleText?: string;
@@ -53,6 +56,8 @@ const CONTROLS_SELECTORS = [
 const EPISODE_TITLE_PATTERN =
   /(S\d+\s*:?\s*E\d+|Season\s*\d+\s*Episode\s*\d+|Episode\s*\d+|\bE\d+\b)/i;
 const EPISODE_TIME_PATTERN = /(\b\d+\s*(m|min|minutes)\b|\b\d+\s*of\s*\d+\s*(m|min|minutes)\b)/i;
+const METADATA_TEXT_PATTERN =
+  /\b(tv-[a-z0-9]+|pg-?13|pg|tv-ma|tv-y|tv-g|nr|nc-17|hd|uhd|4k|seasons?|season|episode|volume|part\s+\d+)\b/i;
 
 const METADATA_SELECTORS = [
   "[data-uia*='maturity-rating']",
@@ -70,6 +75,28 @@ const GENRE_SELECTORS = [
   "[class*='genre']"
 ];
 
+const METADATA_CONTAINER_SELECTORS = [
+  ...METADATA_SELECTORS,
+  ...GENRE_SELECTORS,
+  "[data-uia*='metadata']",
+  "[class*='metadata']",
+  "[class*='meta']",
+  "[class*='maturity']",
+  "[class*='season']",
+  "[class*='genre']",
+  "[class*='tag']",
+  "[class*='info']"
+];
+
+const HEADER_CONTAINER_SELECTORS = [
+  "header",
+  "nav",
+  "[data-uia*='header']",
+  "[data-uia*='row-title']",
+  "[class*='rowHeader']",
+  "[class*='row-title']"
+];
+
 const TITLE_LIKE_SELECTORS = [
   "h1",
   "h2",
@@ -82,7 +109,8 @@ const TITLE_LIKE_SELECTORS = [
   "[class*='name']"
 ];
 
-const NAV_BANNED_PATTERN = /(browse|home|my list|popular)/i;
+const NAV_BANNED_PATTERN =
+  /(browse|home|my list|popular|your next watch|explore all|movies & shows|movies and shows|new & popular)/i;
 
 const isVisible = (el: Element): boolean => {
   const rect = el.getBoundingClientRect();
@@ -244,7 +272,7 @@ export const hasMetadataSection = (root?: Element | null): boolean => {
 };
 
 export const findExpandedRoot = (): HTMLElement | null => {
-  const candidates = findExpandedContainers();
+  const candidates = collectJawboneCandidates();
   const maxWidth = window.innerWidth * 0.85;
   const maxHeight = window.innerHeight * 0.6;
   for (const candidate of candidates) {
@@ -260,9 +288,15 @@ export const findExpandedRoot = (): HTMLElement | null => {
   return null;
 };
 
+const isInMetadataRegion = (el: Element) =>
+  Boolean(el.closest(METADATA_CONTAINER_SELECTORS.join(",")));
+
+const isInHeaderRegion = (el: Element) =>
+  Boolean(el.closest(HEADER_CONTAINER_SELECTORS.join(",")));
 
 const isBannedTitleText = (text: string) => {
   if (NAV_BANNED_PATTERN.test(text)) return true;
+  if (METADATA_TEXT_PATTERN.test(text)) return true;
   return (
     EPISODE_TITLE_PATTERN.test(text) ||
     EPISODE_TIME_PATTERN.test(text) ||
@@ -323,7 +357,9 @@ export const extractDisplayTitle = (expandedRoot: HTMLElement): {
     const dx = rect.left - rootRect.left;
     const dy = rect.top - rootRect.top;
     const dist = Math.hypot(dx, dy);
-    const score = fontSize * 10 + fontWeight / 10 + Math.max(0, 300 - dist);
+    const regionPenalty =
+      isInMetadataRegion(el) || isInHeaderRegion(el) ? 120 : 0;
+    const score = fontSize * 10 + fontWeight / 10 + Math.max(0, 300 - dist) - regionPenalty;
     if (!best || score > best.score) {
       best = { el, score, text };
     }
@@ -394,6 +430,108 @@ export const extractDisplayTitle = (expandedRoot: HTMLElement): {
   return { title: null, rejectedCount };
 };
 
+const extractMetadataInfo = (root: HTMLElement): { year?: number; isSeries?: boolean } => {
+  const nodes = Array.from(root.querySelectorAll(METADATA_CONTAINER_SELECTORS.join(",")));
+  const texts = nodes
+    .map((node) => normalizeText(node.textContent))
+    .filter(Boolean) as string[];
+
+  if (!texts.length) {
+    const controls = findControlsRow(root);
+    const next = controls?.nextElementSibling as HTMLElement | null;
+    const nextText = normalizeText(next?.textContent);
+    if (nextText) texts.push(nextText);
+  }
+
+  const combined = texts.join(" ");
+  const year = parseYearFromText(combined);
+  const hasSeasons = /\bseasons?\b/i.test(combined);
+  const hasRuntime = /\b\d+\s*(m|min|minutes)\b/i.test(combined) || /\b\d+\s*h\b/i.test(combined);
+
+  let isSeries: boolean | undefined = undefined;
+  if (hasSeasons) isSeries = true;
+  else if (hasRuntime) isSeries = false;
+
+  return { year, isSeries };
+};
+
+const extractTitleFromAnchor = (anchor: HTMLAnchorElement): string | undefined => {
+  const candidates: Array<string | null | undefined> = [
+    anchor.getAttribute("aria-label"),
+    anchor.getAttribute("title"),
+    (anchor.querySelector("img[alt]") as HTMLImageElement | null)?.alt,
+    (anchor.querySelector("[aria-label]") as HTMLElement | null)?.getAttribute("aria-label"),
+    anchor.textContent
+  ];
+  for (const candidate of candidates) {
+    const text = normalizeText(candidate);
+    if (!text) continue;
+    if (isBannedTitleText(text)) continue;
+    return text;
+  }
+  return undefined;
+};
+
+export const findActiveJawbone = (): {
+  jawboneEl: HTMLElement | null;
+  extracted: ExtractedTitleInfo | null;
+  rejectedCount?: number;
+  chosenTitleElement?: Element;
+} => {
+  const candidates = findExpandedContainers();
+  const maxWidth = window.innerWidth * 0.85;
+  const maxHeight = window.innerHeight * 0.6;
+
+  for (const candidate of candidates) {
+    const rect = candidate.getBoundingClientRect();
+    if (rect.width > maxWidth || rect.height > maxHeight) continue;
+    const preview = findPreviewElement(candidate);
+    const controls = findControlsRow(candidate);
+    const metadata = hasMetadataSection(candidate);
+    if (!preview || !controls) continue;
+
+    const display = extractDisplayTitle(candidate as HTMLElement);
+    let title = display.title ?? null;
+    const anchor = candidate.querySelector<HTMLAnchorElement>("a[href^='/title/']");
+    if (!title && anchor) {
+      const anchorTitle = extractTitleFromAnchor(anchor);
+      if (anchorTitle) title = normalizeNetflixTitle(anchorTitle) ?? anchorTitle;
+    }
+    if (!title && !metadata) continue;
+    if (!title && metadata) {
+      const fallbackTitle = getRawTitleText(candidate);
+      if (fallbackTitle && !isBannedTitleText(fallbackTitle)) {
+        title = normalizeNetflixTitle(fallbackTitle) ?? fallbackTitle;
+      }
+    }
+    if (!title) continue;
+
+    const href = anchor?.getAttribute("href") ?? null;
+    const netflixId = parseTitleIdFromHref(href) ?? null;
+    const { year, isSeries } = extractMetadataInfo(candidate as HTMLElement);
+    const normalizedTitle = normalizeTitle(title);
+    if (!normalizedTitle) continue;
+
+    const extracted: ExtractedTitleInfo = {
+      rawTitle: title,
+      normalizedTitle,
+      year: year ?? null,
+      isSeries,
+      netflixId,
+      href
+    };
+
+    return {
+      jawboneEl: candidate as HTMLElement,
+      extracted,
+      rejectedCount: display.rejectedCount,
+      chosenTitleElement: display.chosen
+    };
+  }
+
+  return { jawboneEl: null, extracted: null };
+};
+
 export const resolveTitleText = (
   container?: Element | null,
   fallback?: string
@@ -439,6 +577,42 @@ const findExpandedContainers = (): Element[] => {
     });
   }
   return visible.length > 0 ? visible : nodes;
+};
+
+const collectJawboneCandidates = (): Element[] => {
+  const candidates = findExpandedContainers();
+  if (candidates.length) return candidates;
+
+  const controls = Array.from(document.querySelectorAll(CONTROLS_SELECTORS.join(",")));
+  const maxWidth = window.innerWidth * 0.85;
+  const maxHeight = window.innerHeight * 0.6;
+  const roots = new Set<Element>();
+
+  controls.forEach((control) => {
+    let current: Element | null = control;
+    let depth = 0;
+    while (current && depth < 6) {
+      if (current instanceof HTMLElement) {
+        const rect = current.getBoundingClientRect();
+        if (
+          rect.width >= 240 &&
+          rect.height >= 180 &&
+          rect.width <= maxWidth &&
+          rect.height <= maxHeight
+        ) {
+          const preview = findPreviewElement(current);
+          if (preview) {
+            roots.add(current);
+            break;
+          }
+        }
+      }
+      current = current.parentElement;
+      depth += 1;
+    }
+  });
+
+  return Array.from(roots);
 };
 
 export const detectActiveTitleContext = (): {

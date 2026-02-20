@@ -1,7 +1,7 @@
 import { log } from "../../shared/logger";
 import { STORAGE_KEYS } from "../../shared/constants";
 import { buildTmdbCacheKey, normalizeTitle } from "../../shared/normalize";
-import type { ResolveOverlayDataMessage, ResolveTitleMessage, TitleResolvedMessage } from "../../shared/types";
+import type { ExtractedTitleInfo, ResolveTitleMessage, TitleResolvedMessage } from "../../shared/types";
 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const TMDB_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -62,26 +62,63 @@ type TmdbSearchResult = {
   media_type?: string;
 };
 
+const getTitleSimilarity = (a: string, b: string) => {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.8;
+  const aTokens = new Set(a.split(" ").filter(Boolean));
+  const bTokens = new Set(b.split(" ").filter(Boolean));
+  if (!aTokens.size || !bTokens.size) return 0;
+  let overlap = 0;
+  aTokens.forEach((token) => {
+    if (bTokens.has(token)) overlap += 1;
+  });
+  const union = new Set([...aTokens, ...bTokens]).size;
+  return union ? overlap / union : 0;
+};
+
+const scoreCandidate = (
+  info: ExtractedTitleInfo,
+  candidate: TmdbSearchResult,
+  mediaType: "movie" | "tv"
+) => {
+  const candidateTitle = candidate.title ?? candidate.name ?? "";
+  const normalizedCandidate = normalizeTitle(candidateTitle);
+  const normalizedQuery = info.normalizedTitle || normalizeTitle(info.rawTitle);
+  const similarity = getTitleSimilarity(normalizedQuery, normalizedCandidate);
+  let score = similarity * 100;
+
+  const releaseDate = candidate.release_date ?? candidate.first_air_date;
+  const candidateYear = releaseDate ? Number(releaseDate.slice(0, 4)) : undefined;
+  if (info.year && candidateYear) {
+    const diff = Math.abs(info.year - candidateYear);
+    if (diff === 0) score += 20;
+    else if (diff === 1) score += 8;
+    else score -= Math.min(20, diff * 4);
+  }
+
+  if (info.isSeries === true) score += mediaType === "tv" ? 10 : -10;
+  if (info.isSeries === false) score += mediaType === "movie" ? 10 : -10;
+
+  return { score, candidateTitle, candidateYear };
+};
+
 const pickBestMatch = (
+  info: ExtractedTitleInfo,
   results: TmdbSearchResult[],
-  titleText?: string,
-  year?: number
+  mediaType: "movie" | "tv"
 ) => {
   if (!results.length) return null;
-  const normalized = normalizeTitle(titleText);
-
-  const exactTitleAndYear = results.find((item) => {
-    const resultTitle = normalizeTitle(item.title ?? item.name);
-    const releaseDate = item.release_date ?? item.first_air_date;
-    const releaseYear = releaseDate ? Number(releaseDate.slice(0, 4)) : undefined;
-    return resultTitle === normalized && year && releaseYear === year;
+  let best: { result: TmdbSearchResult; score: number } | null = null;
+  results.forEach((result) => {
+    if (!result.id) return;
+    const { score } = scoreCandidate(info, result, mediaType);
+    if (!best || score > best.score) {
+      best = { result, score };
+    }
   });
-  if (exactTitleAndYear) return exactTitleAndYear;
-
-  const exactTitle = results.find((item) => normalizeTitle(item.title ?? item.name) === normalized);
-  if (exactTitle) return exactTitle;
-
-  return results[0];
+  if (!best || best.score < 50) return null;
+  return best.result;
 };
 
 const fetchJson = async (url: string) => {
@@ -94,16 +131,44 @@ const fetchJson = async (url: string) => {
 
 type ResolvedTitle = TitleResolvedMessage["payload"] & { tmdbGenres?: string[] };
 
+type TmdbResolveInput = ExtractedTitleInfo | ResolveTitleMessage["payload"];
+
+const coerceExtractedInfo = (payload: TmdbResolveInput): ExtractedTitleInfo => {
+  if ("rawTitle" in payload) return payload;
+  const rawTitle = payload.titleText ?? "Unknown title";
+  return {
+    rawTitle,
+    normalizedTitle: normalizeTitle(rawTitle),
+    year: payload.year ?? null,
+    isSeries: undefined,
+    netflixId: payload.netflixTitleId ?? null,
+    href: payload.href ?? null
+  };
+};
+
+const pickBestFromMulti = (info: ExtractedTitleInfo, results: TmdbSearchResult[]) => {
+  let best: { result: TmdbSearchResult; mediaType: "movie" | "tv"; score: number } | null = null;
+  results.forEach((result) => {
+    const mediaType = result.media_type === "tv" ? "tv" : result.media_type === "movie" ? "movie" : null;
+    if (!mediaType || !result.id) return;
+    const { score } = scoreCandidate(info, result, mediaType);
+    if (!best || score > best.score) best = { result, mediaType, score };
+  });
+  if (!best || best.score < 50) return null;
+  return best;
+};
+
 export const resolveTitleWithTmdb = async (
-  payload: ResolveTitleMessage["payload"] | ResolveOverlayDataMessage["payload"]
+  payload: TmdbResolveInput
 ): Promise<ResolvedTitle> => {
   const apiKey = await getTmdbApiKey();
-  if (!apiKey || !payload.titleText) {
-    log("TMDb resolve skipped (missing api key or title)", { hasKey: !!apiKey, payload });
-    return { title: payload.titleText ?? "Unknown title" };
+  const info = coerceExtractedInfo(payload);
+  if (!apiKey || !info.rawTitle) {
+    log("TMDb resolve skipped (missing api key or title)", { hasKey: !!apiKey, info });
+    return { title: info.rawTitle ?? "Unknown title" };
   }
 
-  const cacheKey = buildTmdbCacheKey(payload.titleText, payload.year);
+  const cacheKey = buildTmdbCacheKey(info.rawTitle, info.year ?? undefined);
   const cache = await getTmdbCache();
   const cached = cache[cacheKey];
   if (cached && Date.now() - cached.storedAt < TMDB_CACHE_TTL_MS) {
@@ -119,27 +184,64 @@ export const resolveTitleWithTmdb = async (
     return cached.data;
   }
 
-  const params = new URLSearchParams({
-    api_key: apiKey,
-    query: payload.titleText
-  });
+  const query = info.rawTitle;
+  const year = info.year ?? undefined;
+  const mediaGuess = info.isSeries === true ? "tv" : info.isSeries === false ? "movie" : "multi";
+  log("TMDB_SEARCH_REQUEST", { query, year, mediaType: mediaGuess });
 
-  const searchUrl = `${TMDB_BASE_URL}/search/multi?${params.toString()}`;
-  log("TMDb search", { searchUrl });
-  const searchData = await fetchJson(searchUrl);
-  const filtered = (searchData?.results ?? []).filter(
-    (item: TmdbSearchResult) => item.media_type === "movie" || item.media_type === "tv"
-  );
-  const match = pickBestMatch(filtered, payload.titleText, payload.year);
+  let match: TmdbSearchResult | null = null;
+  let mediaType: "movie" | "tv" | null = null;
 
-  if (!match?.id) {
-    log("TMDb no match", { titleText: payload.titleText });
-    return { title: payload.titleText };
+  if (mediaGuess === "tv") {
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      query,
+      ...(year ? { first_air_date_year: String(year) } : {})
+    });
+    const searchUrl = `${TMDB_BASE_URL}/search/tv?${params.toString()}`;
+    const searchData = await fetchJson(searchUrl);
+    match = pickBestMatch(info, searchData?.results ?? [], "tv");
+    mediaType = match ? "tv" : null;
+  } else if (mediaGuess === "movie") {
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      query,
+      ...(year ? { year: String(year) } : {})
+    });
+    const searchUrl = `${TMDB_BASE_URL}/search/movie?${params.toString()}`;
+    const searchData = await fetchJson(searchUrl);
+    match = pickBestMatch(info, searchData?.results ?? [], "movie");
+    mediaType = match ? "movie" : null;
   }
 
-  const mediaType: "movie" | "tv" = match.media_type === "tv" ? "tv" : "movie";
+  if (!match) {
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      query
+    });
+    const searchUrl = `${TMDB_BASE_URL}/search/multi?${params.toString()}`;
+    const searchData = await fetchJson(searchUrl);
+    const filtered = (searchData?.results ?? []).filter(
+      (item: TmdbSearchResult) => item.media_type === "movie" || item.media_type === "tv"
+    );
+    const best = pickBestFromMulti(info, filtered);
+    if (best) {
+      match = best.result;
+      mediaType = best.mediaType;
+    }
+  }
+
+  if (!match?.id || !mediaType) {
+    log("TMDB_NO_MATCH", { titleText: info.rawTitle, year, mediaType: mediaGuess });
+    return { title: info.rawTitle };
+  }
+
   const detailsUrl = `${TMDB_BASE_URL}/${mediaType}/${match.id}?api_key=${apiKey}`;
-  log("TMDb details", { detailsUrl, mediaType });
+  log("TMDB_SEARCH_CHOSEN", {
+    title: match.title ?? match.name,
+    year: match.release_date ?? match.first_air_date,
+    mediaType
+  });
   const details = await fetchJson(detailsUrl);
 
   const releaseDate =
@@ -149,7 +251,7 @@ export const resolveTitleWithTmdb = async (
   const releaseYear = releaseDate ? Number(releaseDate.slice(0, 4)) : undefined;
 
   const resolved: ResolvedTitle = {
-    title: (details.title ?? details.name) ?? payload.titleText ?? "Unknown title",
+    title: (details.title ?? details.name) ?? info.rawTitle ?? "Unknown title",
     tmdbId: details.id,
     tmdbVoteAverage: details.vote_average,
     tmdbVoteCount: details.vote_count,
@@ -226,7 +328,15 @@ export const searchTmdbId = async (
   if (year) params.set("year", String(year));
   const searchUrl = `${TMDB_BASE_URL}/search/movie?${params.toString()}`;
   const searchData = await fetchJson(searchUrl);
-  const match = pickBestMatch(searchData?.results ?? [], titleText, year);
+  const info: ExtractedTitleInfo = {
+    rawTitle: titleText,
+    normalizedTitle: normalizeTitle(titleText),
+    year: year ?? null,
+    isSeries: false,
+    netflixId: null,
+    href: null
+  };
+  const match = pickBestMatch(info, searchData?.results ?? [], "movie");
   if (!match?.id) return null;
   const releaseYear = match.release_date ? Number(match.release_date.slice(0, 4)) : undefined;
   return {
