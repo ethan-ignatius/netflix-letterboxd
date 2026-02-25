@@ -3,8 +3,11 @@
   "name": "Netflix + Letterboxd Overlay",
   "version": "0.1.0",
   "description": "Overlay Letterboxd data on Netflix using your export file.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://api.themoviedb.org/*"],
+  "permissions": ["storage", "tabCapture", "offscreen"],
+  "host_permissions": [
+    "https://api.themoviedb.org/*",
+    "https://rekognition.us-east-1.amazonaws.com/*"
+  ],
   "action": {
     "default_title": "Netflix + Letterboxd",
     "default_popup": "popup/index.html"

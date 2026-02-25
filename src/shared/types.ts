@@ -67,6 +67,42 @@ export type XrayCastEntry = {
   profilePath?: string | null;
 };
 
+/** One actor identified in the paused frame (scene-level X-Ray). */
+export type XraySceneActor = {
+  name: string;
+  character?: string | null;
+  photoUrl?: string | null;
+  confidence: number;
+  faceBox?: { x: number; y: number; width: number; height: number };
+};
+
+export type AnalyzeFramePayload = {
+  tabId: number;
+  netflixTitleId: string;
+  titleText?: string;
+  year?: number;
+  tmdbId?: number;
+  tmdbMediaType?: "movie" | "tv";
+  timestamp: number;
+};
+
+export type AnalyzeFrameMessage = {
+  type: "ANALYZE_FRAME";
+  requestId: string;
+  payload: AnalyzeFramePayload;
+};
+
+export type XrayFrameResultMessage = {
+  type: "XRAY_FRAME_RESULT";
+  requestId: string;
+  payload: {
+    actors: XraySceneActor[];
+    noFaces?: boolean;
+    drmBlocked?: boolean;
+    error?: string;
+  };
+};
+
 export type ResolveOverlayDataPayload = ExtractedTitleInfo;
 
 export type ResolveOverlayDataMessage = {
@@ -150,5 +186,7 @@ export type ExtensionRuntimeMessage =
   | OverlayDataResolvedMessage
   | ResolveXrayMessage
   | XrayResolvedMessage
+  | AnalyzeFrameMessage
+  | XrayFrameResultMessage
   | LetterboxdIndexUpdatedMessage
   | LetterboxdIndexUpdatedAckMessage;

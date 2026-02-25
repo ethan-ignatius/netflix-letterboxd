@@ -1,8 +1,10 @@
 import { log } from "../shared/logger";
 import { initNetflixObserver } from "./netflix/observer";
+import { initXrayWatch } from "./netflix/xray-watch";
 
 const init = async () => {
   await initNetflixObserver();
+  await initXrayWatch();
 };
 
 if (document.readyState === "loading") {

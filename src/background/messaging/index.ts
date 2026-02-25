@@ -1,16 +1,19 @@
 import { log } from "../../shared/logger";
 import { STORAGE_KEYS } from "../../shared/constants";
 import type {
+  AnalyzeFrameMessage,
   ExtensionRuntimeMessage,
   LetterboxdIndexUpdatedAckMessage,
   LetterboxdIndexUpdatedMessage,
   OverlayDataResolvedMessage,
   ResolveOverlayDataMessage,
   ResolveTitleMessage,
-  TitleResolvedMessage
+  TitleResolvedMessage,
+  XrayFrameResultMessage
 } from "../../shared/types";
 import { resolveTitleWithTmdb } from "../tmdb";
 import { buildMatchProfile, computeMatchScore, resolveLetterboxdEntry } from "../letterboxd";
+import { analyzeFrame } from "../xray-orchestration";
 
 export const registerMessageHandlers = () => {
   chrome.runtime.onMessage.addListener(
@@ -96,6 +99,35 @@ export const registerMessageHandlers = () => {
           }
         })();
 
+        return true;
+      }
+
+      if (message.type === "ANALYZE_FRAME") {
+        const { requestId, payload } = message as AnalyzeFrameMessage;
+        const tabId = sender.tab?.id ?? 0;
+        void (async () => {
+          try {
+            const result = await analyzeFrame({ ...payload, tabId });
+            const response: XrayFrameResultMessage = {
+              type: "XRAY_FRAME_RESULT",
+              requestId,
+              payload: {
+                actors: result.actors,
+                noFaces: result.noFaces,
+                drmBlocked: result.drmBlocked,
+                error: result.error
+              }
+            };
+            sendResponse(response);
+          } catch (error) {
+            log("X-Ray analyze failed", { error });
+            sendResponse({
+              type: "XRAY_FRAME_RESULT",
+              requestId,
+              payload: { actors: [], error: (error as Error).message }
+            } satisfies XrayFrameResultMessage);
+          }
+        })();
         return true;
       }
 

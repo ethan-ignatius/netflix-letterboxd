@@ -23,6 +23,11 @@ const contentConfig = {
 
 const appConfig = {
   root: rootDir,
+  resolve: {
+    alias: {
+      "modern-face-api": resolve(__dirname, "node_modules/modern-face-api/build/commonjs/index.js")
+    }
+  },
   build: {
     outDir: "../dist",
     emptyOutDir: false,
@@ -30,7 +35,8 @@ const appConfig = {
     rollupOptions: {
       input: {
         "background/index": resolve(__dirname, "src/background/index.ts"),
-        "popup/index": resolve(__dirname, "src/popup/index.html")
+        "popup/index": resolve(__dirname, "src/popup/index.html"),
+        "offscreen/offscreen": resolve(__dirname, "src/offscreen/offscreen.html")
       },
       output: {
         format: "es",
