@@ -6,7 +6,8 @@
   "permissions": ["storage", "tabCapture", "offscreen"],
   "host_permissions": [
     "https://api.themoviedb.org/*",
-    "https://rekognition.us-east-1.amazonaws.com/*"
+    "https://rekognition.us-east-1.amazonaws.com/*",
+    "https://*/*"
   ],
   "action": {
     "default_title": "Netflix + Letterboxd",

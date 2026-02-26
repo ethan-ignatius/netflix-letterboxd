@@ -12,29 +12,34 @@ Netflix + Letterboxd is a Manifest V3 Chrome extension that overlays Letterboxd-
 </p>
 
 ## Architecture
+- **Users need no API keys.** The extension talks to a small backend you deploy; that backend holds one TMDb API key and one set of AWS Rekognition credentials. Users only enable the overlay and (optionally) import their Letterboxd export.
 - Content script detects the expanded Netflix jawbone card and injects a Shadow DOM UI on browse pages.
 - Content script also hooks into the `/watch/*` player, watching for **pause** events to trigger X-Ray scene analysis.
-- Background service worker resolves titles via TMDb, merges Letterboxd signals, computes match scores, and orchestrates X-Ray analysis.
-- An offscreen document + `chrome.tabCapture` capture a single video frame for X-Ray, run local face detection (TensorFlow.js + `modern-face-api`), and return cropped faces for recognition.
-- Background calls AWS Rekognition’s `RecognizeCelebrities` on cropped faces, enriches with TMDb person/character data, and sends actor results back to the content script.
-- Popup handles configuration (TMDb API key, Letterboxd ZIP import, AWS credentials, feature toggles).
+- Background service worker calls your **backend proxy** for title resolution and X-Ray (or, if no proxy URL is set at build time, uses TMDb/AWS directly with user-supplied keys from storage).
+- An offscreen document + `chrome.tabCapture` capture a single video frame for X-Ray, run local face detection (TensorFlow.js + `modern-face-api`), and return cropped faces to the background; the background sends those to the proxy for celebrity recognition and TMDb person/character lookup.
+- Popup handles overlay toggle and Letterboxd ZIP import only.
 
 See `docs/ARCHITECTURE.md` for full details.
+
+### Backend proxy (recommended for “users don’t need keys”)
+
+1. Deploy the Node server in `server/` (e.g. Fly.io, Railway, Render). Set env: `TMDB_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (default `us-east-1`).
+2. Build the extension with your backend URL:  
+   `VITE_PROXY_BASE_URL=https://your-api.fly.dev npm run build`
+3. Load the built `dist/` in Chrome. Overlay and X-Ray then use your backend; users never see or set TMDb or AWS keys.
+
+```bash
+cd server && npm install && npm start
+# Or for production: set env vars and run on your host.
+```
 
 ## X-Ray actor recognition
 
 When you pause Netflix playback on a `/watch/*` page, the extension can show an **“In this scene”** panel on the right side of the screen listing the actors detected in the paused frame.
 
-### Requirements
+### Requirements (when using the backend proxy)
 
-- **TMDb API key** (already used by the base overlay).
-- **AWS Rekognition**:
-  - Region: `us-east-1` (configurable via storage, default is us-east-1).
-  - API access with `RecognizeCelebrities` permission.
-  - Credentials stored in extension storage:
-    - `awsAccessKeyId`
-    - `awsSecretAccessKey`
-    - `awsRegion` (optional, defaults to `us-east-1`).
+- **You** (the publisher) deploy `server/` with one TMDb API key and one set of AWS Rekognition credentials in env. **Users** do not need any keys.
 - **Face detection models** (for `modern-face-api`):
   - Models are loaded from `chrome.runtime.getURL("models/")` if present, otherwise from a CDN fallback.
   - For best reliability, download the SSD MobileNet v1 face detection model and ship it under a `models/` folder in the built extension.
@@ -73,6 +78,11 @@ When you pause Netflix playback on a `/watch/*` page, the extension can show an 
   - Results are cached for 24h by `netflixTitleId` + time bucket (~2s granularity) to avoid re‑calling Rekognition for the same moment.
   - Cache lives in extension IndexedDB and can be cleared by resetting the extension data.
 - If Rekognition or TMDb fail, the X-Ray panel falls back to generic entries (e.g. “Unknown”) and/or shows an inline error message.
+
+### Security
+
+- When using the **backend proxy**, TMDb and AWS keys live only on your server; the extension never ships or stores them. Users only use the overlay and (optionally) import their Letterboxd ZIP.
+- If you self-host without a proxy and add your own key UI back, never commit keys or ship them in the extension bundle.
 
 ## Local Development
 ```bash

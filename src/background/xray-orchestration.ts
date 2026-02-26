@@ -1,9 +1,7 @@
 import { log } from "../shared/logger";
 import type { AnalyzeFramePayload, XraySceneActor } from "../shared/types";
 import { getXrayCached, setXrayCached } from "./xray-cache";
-import { getAwsCredentials, recognizeCelebrities } from "./rekognition";
-import { searchPersonAndCharacter, getProfileImageUrl } from "./tmdb/person";
-import { resolveTitleWithTmdb } from "./tmdb";
+import { resolveTitle, getPersonCharacter, recognizeCelebrities } from "./api-proxy";
 import { REKOGNITION_MAX_FACES } from "../shared/constants";
 
 const OFFSCREEN_DOCUMENT_PATH = "offscreen/offscreen.html";
@@ -69,7 +67,7 @@ export async function analyzeFrame(payload: AnalyzeFramePayload): Promise<{
 
   if (titleId == null && (payload.titleText || payload.netflixTitleId)) {
     try {
-      const resolved = await resolveTitleWithTmdb({
+      const resolved = await resolveTitle({
         rawTitle: payload.titleText ?? "",
         normalizedTitle: payload.titleText ?? "",
         year: payload.year ?? null,
@@ -143,21 +141,13 @@ export async function analyzeFrame(payload: AnalyzeFramePayload): Promise<{
     return { actors: [], noFaces: true };
   }
 
-  const credentials = await getAwsCredentials();
-  if (!credentials) {
-    return {
-      actors: [],
-      error: "AWS credentials not configured"
-    };
-  }
-
   const actors: XraySceneActor[] = [];
   const facesToProcess = processed.faces.slice(0, REKOGNITION_MAX_FACES);
 
   for (const face of facesToProcess) {
     try {
       const imageBytes = base64ToUint8Array(face.base64);
-      const celebs = await recognizeCelebrities(imageBytes, credentials);
+      const celebs = await recognizeCelebrities(imageBytes);
       const celeb = celebs[0];
       if (!celeb || (celeb.matchConfidence ?? 0) < 70) {
         actors.push({
@@ -171,10 +161,10 @@ export async function analyzeFrame(payload: AnalyzeFramePayload): Promise<{
       let character: string | null = null;
       let photoUrl: string | null = null;
       if (titleId && (mediaType === "movie" || mediaType === "tv")) {
-        const person = await searchPersonAndCharacter(celeb.name, titleId, mediaType);
+        const person = await getPersonCharacter(celeb.name, titleId, mediaType);
         if (person) {
           character = person.character ?? null;
-          photoUrl = getProfileImageUrl(person.profilePath);
+          photoUrl = person.photoUrl ?? null;
         }
       }
 

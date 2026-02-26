@@ -7,10 +7,6 @@ import type { LetterboxdIndex, LetterboxdStats } from "../shared/types";
 import { setLetterboxdIndex } from "../shared/storage";
 
 const overlayToggle = document.getElementById("overlayToggle") as HTMLInputElement | null;
-const tmdbKeyInput = document.getElementById("tmdbKey") as HTMLInputElement | null;
-const saveKeyButton = document.getElementById("saveKey") as HTMLButtonElement | null;
-const clearCacheButton = document.getElementById("clearCache") as HTMLButtonElement | null;
-const keyStatus = document.getElementById("keyStatus") as HTMLDivElement | null;
 const zipStatus = document.getElementById("zipStatus") as HTMLDivElement | null;
 const zipMeta = document.getElementById("zipMeta") as HTMLDivElement | null;
 const uploadZip = document.getElementById("uploadZip") as HTMLButtonElement | null;
@@ -282,14 +278,6 @@ const renderPopup = async () => {
     overlayToggle.checked = state[STORAGE_KEYS.OVERLAY_ENABLED] ?? true;
   }
 
-  if (tmdbKeyInput) {
-    tmdbKeyInput.value = state[STORAGE_KEYS.TMDB_API_KEY] ?? "";
-  }
-
-  if (keyStatus) {
-    keyStatus.textContent = state[STORAGE_KEYS.TMDB_API_KEY] ? "Key saved." : "Not set.";
-  }
-
   const stats = state[STORAGE_KEYS.LETTERBOXD_STATS];
   if (zipStatus) {
     if (stats) {
@@ -314,25 +302,6 @@ const bindListeners = () => {
     const enabled = overlayToggle.checked;
     await chrome.storage.local.set({ [STORAGE_KEYS.OVERLAY_ENABLED]: enabled });
     log("Overlay toggle updated", { enabled });
-  });
-
-  saveKeyButton?.addEventListener("click", async () => {
-    const value = tmdbKeyInput?.value.trim();
-    if (!value) {
-      await chrome.storage.local.remove(STORAGE_KEYS.TMDB_API_KEY);
-      if (keyStatus) keyStatus.textContent = "Not set.";
-      log("TMDb key cleared");
-      return;
-    }
-
-    await chrome.storage.local.set({ [STORAGE_KEYS.TMDB_API_KEY]: value });
-    if (keyStatus) keyStatus.textContent = "Key saved.";
-    log("TMDb key saved");
-  });
-
-  clearCacheButton?.addEventListener("click", async () => {
-    await chrome.storage.local.remove(STORAGE_KEYS.TMDB_CACHE);
-    log("TMDb cache cleared");
   });
 
   uploadZip?.addEventListener("click", () => {

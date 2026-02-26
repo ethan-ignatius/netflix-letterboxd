@@ -23,6 +23,11 @@ const contentConfig = {
 
 const appConfig = {
   root: rootDir,
+  define: {
+    "import.meta.env.VITE_PROXY_BASE_URL": JSON.stringify(
+      process.env.VITE_PROXY_BASE_URL ?? ""
+    )
+  },
   resolve: {
     alias: {
       "modern-face-api": resolve(__dirname, "node_modules/modern-face-api/build/commonjs/index.js")

@@ -1,3 +1,8 @@
+/**
+ * AWS Rekognition client for X-Ray celebrity recognition.
+ * SECURITY: AWS credentials must NEVER be hardcoded or shipped in the extension bundle.
+ * They are read only from chrome.storage.local at runtime (set by the user via popup/options).
+ */
 import { log } from "../shared/logger";
 import { STORAGE_KEYS, REKOGNITION_REGION } from "../shared/constants";
 

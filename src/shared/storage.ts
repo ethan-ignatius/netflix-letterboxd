@@ -12,6 +12,9 @@ export interface StorageState {
   [STORAGE_KEYS.LETTERBOXD_INDEX]?: LetterboxdIndex | LetterboxdIndexLegacy;
   [STORAGE_KEYS.LETTERBOXD_STATS]?: LetterboxdStats;
   [STORAGE_KEYS.LAST_IMPORT_AT]?: string;
+  [STORAGE_KEYS.AWS_ACCESS_KEY_ID]?: string;
+  [STORAGE_KEYS.AWS_SECRET_ACCESS_KEY]?: string;
+  [STORAGE_KEYS.AWS_REGION]?: string;
 }
 
 export const getStorage = async (): Promise<StorageState> => {
@@ -24,7 +27,10 @@ export const getStorage = async (): Promise<StorageState> => {
     STORAGE_KEYS.MATCH_PROFILE,
     STORAGE_KEYS.LETTERBOXD_INDEX,
     STORAGE_KEYS.LETTERBOXD_STATS,
-    STORAGE_KEYS.LAST_IMPORT_AT
+    STORAGE_KEYS.LAST_IMPORT_AT,
+    STORAGE_KEYS.AWS_ACCESS_KEY_ID,
+    STORAGE_KEYS.AWS_SECRET_ACCESS_KEY,
+    STORAGE_KEYS.AWS_REGION
   ]) as Promise<StorageState>;
 };
 

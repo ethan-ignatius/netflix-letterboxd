@@ -11,7 +11,7 @@ import type {
   TitleResolvedMessage,
   XrayFrameResultMessage
 } from "../../shared/types";
-import { resolveTitleWithTmdb } from "../tmdb";
+import { resolveTitle } from "../api-proxy";
 import { buildMatchProfile, computeMatchScore, resolveLetterboxdEntry } from "../letterboxd";
 import { analyzeFrame } from "../xray-orchestration";
 
@@ -45,7 +45,7 @@ export const registerMessageHandlers = () => {
 
         void (async () => {
           try {
-            const resolved = await resolveTitleWithTmdb(payload);
+            const resolved = await resolveTitle(payload);
             const lbData = await resolveLetterboxdEntry(
               payload,
               resolved.title,
@@ -136,7 +136,7 @@ export const registerMessageHandlers = () => {
 
         void (async () => {
           try {
-            const resolved = await resolveTitleWithTmdb(payload);
+            const resolved = await resolveTitle(payload);
             const lbData = await resolveLetterboxdEntry(
               payload,
               resolved.title,
