@@ -1,5 +1,5 @@
 import type { ReactionEvent, ReactionType } from "../../shared/types";
-import { mountEmotionTimeline } from "../ui/emotion-timeline";
+import { mountEmotionTimeline, hideEmotionTimeline } from "../ui/emotion-timeline";
 import { detectActiveTitleContext } from "./selectors";
 
 const REACTION_KEYS: Record<string, ReactionType> = {
@@ -178,7 +178,10 @@ export const initReactionCapture = () => {
       setHelpPanelVisible(true);
       void mountEmotionTimeline();
     });
-    video.addEventListener("play", () => setHelpPanelVisible(false));
+    video.addEventListener("play", () => {
+      setHelpPanelVisible(false);
+      hideEmotionTimeline();
+    });
   };
 
   // Initial attach if we're already on a watch page.
