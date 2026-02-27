@@ -19,6 +19,9 @@ export const STORAGE_KEYS = {
   AWS_REGION: "awsRegion"
 } as const;
 
+// Reaction timeline defaults
+export const REACTION_BUCKET_SIZE_SEC = 10;
+
 export const XRAY_CACHE_DB_NAME = "nxl_xray_cache";
 export const XRAY_CACHE_DB_VERSION = 1;
 export const XRAY_CACHE_STORE = "frames";

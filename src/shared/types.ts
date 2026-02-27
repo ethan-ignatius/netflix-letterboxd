@@ -67,6 +67,53 @@ export type XrayCastEntry = {
   profilePath?: string | null;
 };
 
+// --- Personal reaction timeline & emotional mapping ---
+
+export type ReactionType =
+  | "laugh"
+  | "smile"
+  | "shock"
+  | "sad"
+  | "angry"
+  | "scared"
+  | "bored"
+  | "neutral";
+
+export type ReactionEvent = {
+  id: string;
+  netflixId: string;
+  profileId?: string | null;
+  season?: number | null;
+  episode?: number | null;
+  timestampSec: number;
+  createdAt: number;
+  type: ReactionType;
+};
+
+export type ReactionBucket = {
+  startSec: number;
+  endSec: number;
+  count: number;
+  reactions: Record<ReactionType, number>;
+  meanValence: number;
+  meanArousal: number;
+  intensity: number;
+};
+
+export type ReactionTimeline = {
+  netflixId: string;
+  durationSec: number;
+  bucketSizeSec: number;
+  buckets: ReactionBucket[];
+};
+
+export type EmotionalPathPoint = {
+  timeSec: number;
+  valence: number;
+  arousal: number;
+  intensity: number;
+};
+
 /** One actor identified in the paused frame (scene-level X-Ray). */
 export type XraySceneActor = {
   name: string;

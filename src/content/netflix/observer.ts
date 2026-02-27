@@ -10,11 +10,11 @@ import type {
   OverlayDataResolvedMessage,
   ResolveOverlayDataMessage
 } from "../../shared/types";
-import {
-  findActiveJawbone
-} from "./selectors";
+import { findActiveJawbone } from "./selectors";
 import { createOverlayManager } from "../ui/overlay";
+import { initReactionCapture } from "./reactions";
 import { setBadgeVisible } from "../ui/badge";
+import { mountEmotionTimeline, mountEmotionPanel, updateEmotionPointer } from "../ui/emotion-timeline";
 
 const TOGGLE_COMBO = {
   ctrlKey: true,
@@ -38,6 +38,8 @@ let lastOutlined: HTMLElement | null = null;
 let playbackActive = false;
 let lastResolvedPayload: OverlayData | null = null;
 let lastPointerTarget: Element | null = null;
+let emotionPanelHost: HTMLDivElement | null = null;
+let lastReactionTimeline: import("../../shared/types").ReactionTimeline | null = null;
 
 type NxlWindow = Window & {
   __nxlBooted?: boolean;
@@ -251,6 +253,20 @@ const attemptResolve = (reason: string) => {
   overlayManager.mount(root);
   overlayManager.update(buildEmptyOverlayData(extracted.rawTitle, extracted.year ?? undefined));
 
+  // Mount reaction timeline and emotion panel for this container.
+  try {
+    void mountEmotionTimeline(root).then((timeline) => {
+      if (timeline) {
+        lastReactionTimeline = timeline;
+        if (!emotionPanelHost) {
+          emotionPanelHost = mountEmotionPanel(root);
+        }
+      }
+    });
+  } catch (error) {
+    log("EMOTION_TIMELINE_MOUNT_FAILED", { error });
+  }
+
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   lastRequestId = requestId;
   const message: ResolveOverlayDataMessage = {
@@ -367,6 +383,16 @@ const observeTitleChanges = () => {
     if (!overlayManager.isMounted()) {
       attemptResolve("watchdog");
     }
+    try {
+      if (!emotionPanelHost && !playbackActive) {
+        emotionPanelHost = mountEmotionPanel(document.body);
+      }
+      if (emotionPanelHost && lastReactionTimeline) {
+        updateEmotionPointer(emotionPanelHost, lastReactionTimeline);
+      }
+    } catch (error) {
+      log("EMOTION_PANEL_UPDATE_FAILED", { error });
+    }
   }, WATCHDOG_INTERVAL_MS);
 
   scheduleResolve("init");
@@ -441,4 +467,5 @@ export const initNetflixObserver = async () => {
   bindRuntimeMessages();
   setDebugHook();
   window.addEventListener("keydown", handleKeydown);
+  initReactionCapture();
 };

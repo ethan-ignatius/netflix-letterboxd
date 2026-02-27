@@ -22,16 +22,9 @@ function getModelsBase(): string {
 
 async function loadModels(): Promise<boolean> {
   if (modelsLoaded) return true;
-  try {
-    const faceapi = await import("modern-face-api");
-    const base = getModelsBase();
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(base);
-    modelsLoaded = true;
-    return true;
-  } catch (e) {
-    console.warn("[X-Ray offscreen] Model load failed", e);
-    return false;
-  }
+  // X-Ray temporarily disabled: mark models as loaded without importing anything.
+  modelsLoaded = true;
+  return true;
 }
 
 function createVideoAndCanvas(): void {
@@ -109,48 +102,9 @@ type FaceCrop = { base64: string; box: { x: number; y: number; width: number; he
 async function detectAndCropFaces(
   source: HTMLCanvasElement | HTMLVideoElement
 ): Promise<FaceCrop[]> {
-  const faceapi = await import("modern-face-api");
-  const task = faceapi.detectAllFaces(
-    source,
-    new faceapi.SsdMobilenetv1Options({ minConfidence: FACE_MIN_CONFIDENCE })
-  );
-  const detections = await (typeof task.run === "function" ? task.run() : task);
-  if (!detections?.length) return [];
-
-  const ctx = (canvas as HTMLCanvasElement).getContext("2d");
-  if (!ctx || !canvas) return [];
-
-  const results: FaceCrop[] = [];
-  for (const det of detections) {
-    const box = det.box;
-    const x = Math.max(0, Math.round(box.x));
-    const y = Math.max(0, Math.round(box.y));
-    const w = Math.min(canvas.width - x, Math.round(box.width));
-    const h = Math.min(canvas.height - y, Math.round(box.height));
-    if (w <= 0 || h <= 0) continue;
-
-    const cropCanvas = document.createElement("canvas");
-    cropCanvas.width = w;
-    cropCanvas.height = h;
-    const cropCtx = cropCanvas.getContext("2d");
-    if (!cropCtx) continue;
-    cropCtx.drawImage(source, x, y, w, h, 0, 0, w, h);
-
-    try {
-      const blob = await new Promise<Blob | null>((res) => cropCanvas.toBlob(res, "image/jpeg", 0.9));
-      if (!blob) continue;
-      const base64 = await new Promise<string>((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res((r.result as string).split(",")[1] ?? "");
-        r.onerror = rej;
-        r.readAsDataURL(blob);
-      });
-      results.push({ base64, box: { x, y, width: w, height: h } });
-    } catch {
-      // skip this face
-    }
-  }
-  return results;
+  // X-Ray temporarily disabled: skip detection.
+  void source;
+  return [];
 }
 
 async function processStreamId(streamId: string): Promise<{ faces: FaceCrop[]; error?: string }> {

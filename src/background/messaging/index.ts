@@ -9,11 +9,14 @@ import type {
   ResolveOverlayDataMessage,
   ResolveTitleMessage,
   TitleResolvedMessage,
-  XrayFrameResultMessage
+  XrayFrameResultMessage,
+  ReactionEvent,
+  ReactionTimeline
 } from "../../shared/types";
 import { resolveTitle } from "../api-proxy";
 import { buildMatchProfile, computeMatchScore, resolveLetterboxdEntry } from "../letterboxd";
 import { analyzeFrame } from "../xray-orchestration";
+import { buildReactionTimeline, getReactionEvents, storeReactionEvent } from "../reactions";
 
 export const registerMessageHandlers = () => {
   chrome.runtime.onMessage.addListener(
@@ -102,33 +105,44 @@ export const registerMessageHandlers = () => {
         return true;
       }
 
-      if (message.type === "ANALYZE_FRAME") {
-        const { requestId, payload } = message as AnalyzeFrameMessage;
-        const tabId = sender.tab?.id ?? 0;
+      if (message.type === "STORE_REACTION_EVENT") {
+        const event = message.payload as ReactionEvent;
         void (async () => {
-          try {
-            const result = await analyzeFrame({ ...payload, tabId });
-            const response: XrayFrameResultMessage = {
-              type: "XRAY_FRAME_RESULT",
-              requestId,
-              payload: {
-                actors: result.actors,
-                noFaces: result.noFaces,
-                drmBlocked: result.drmBlocked,
-                permissionRequired: result.permissionRequired,
-                error: result.error
-              }
-            };
-            sendResponse(response);
-          } catch (error) {
-            log("X-Ray analyze failed", { error });
-            sendResponse({
-              type: "XRAY_FRAME_RESULT",
-              requestId,
-              payload: { actors: [], error: (error as Error).message }
-            } satisfies XrayFrameResultMessage);
-          }
+          await storeReactionEvent(event);
         })();
+        sendResponse({ ok: true });
+        return true;
+      }
+
+      if (message.type === "GET_REACTION_TIMELINE") {
+        const { netflixId, profileId, durationSec } = message.payload as {
+          netflixId: string;
+          profileId?: string | null;
+          durationSec: number;
+        };
+        void (async () => {
+          const events = await getReactionEvents(netflixId, profileId);
+          const timeline: ReactionTimeline = buildReactionTimeline(events, durationSec);
+          sendResponse(timeline);
+        })();
+        return true;
+      }
+
+      if (message.type === "ANALYZE_FRAME") {
+        const { requestId } = message as AnalyzeFrameMessage;
+        // X-Ray temporarily disabled: return an empty result to keep the API stable.
+        const response: XrayFrameResultMessage = {
+          type: "XRAY_FRAME_RESULT",
+          requestId,
+          payload: {
+            actors: [],
+            noFaces: true,
+            drmBlocked: false,
+            permissionRequired: false,
+            error: "X-Ray temporarily disabled"
+          }
+        };
+        sendResponse(response);
         return true;
       }
 

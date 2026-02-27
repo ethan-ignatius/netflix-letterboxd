@@ -23,11 +23,6 @@ const contentConfig = {
 
 const appConfig = {
   root: rootDir,
-  resolve: {
-    alias: {
-      "modern-face-api": resolve(__dirname, "node_modules/modern-face-api/build/commonjs/index.js")
-    }
-  },
   build: {
     outDir: "../dist",
     emptyOutDir: false,

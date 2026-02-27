@@ -1,6 +1,7 @@
 import { log } from "../../shared/logger";
 import { STORAGE_KEYS, XRAY_DEBOUNCE_MS } from "../../shared/constants";
 import type { AnalyzeFramePayload } from "../../shared/types";
+// X-Ray UI temporarily disabled; keep types and wiring but no-op the panel.
 import {
   showXrayPanel,
   showXrayLoading,
@@ -61,29 +62,16 @@ function requestAnalyzeFrame(): void {
   chrome.runtime.sendMessage(
     { type: "ANALYZE_FRAME", requestId: `xray_${Date.now()}`, payload },
     (response) => {
-      if (chrome.runtime.lastError) {
-        showXrayError(chrome.runtime.lastError.message || "Extension error");
-        return;
-      }
-      if (response?.type !== "XRAY_FRAME_RESULT") {
-        showXrayError("No response");
-        return;
-      }
-      const { actors, noFaces, drmBlocked, error } = response.payload;
-      if (error) {
-        if (drmBlocked) showXrayError("Capture not available (DRM)");
-        else showXrayError(error);
-        return;
-      }
-      if (noFaces) showXrayPanel([]);
-      else showXrayPanel(actors);
+      // For now, we silently ignore responses and avoid showing the X-Ray UI.
+      void response;
     }
   );
 }
 
 function getMainVideo(): HTMLVideoElement | null {
   const videos = document.querySelectorAll<HTMLVideoElement>("video");
-  for (const v of videos) {
+  for (let i = 0; i < videos.length; i += 1) {
+    const v = videos[i];
     const r = v.getBoundingClientRect();
     if (r.width >= window.innerWidth * 0.5 && r.height >= window.innerHeight * 0.5) return v;
   }
