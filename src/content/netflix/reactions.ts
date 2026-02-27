@@ -81,8 +81,11 @@ let hoverHideTimer: number | null = null;
 let hoverSettleMountTimer: number | null = null;
 let lastTimelineMountAt = 0;
 let hoverContainer: HTMLElement | null = null;
+let hoverGlobalBound = false;
 
+const TIMELINE_HOST_ID = "nxlb-reaction-timeline";
 const HOVER_HIDE_DELAY_MS = 1700;
+const QUICK_HIDE_DELAY_MS = 320;
 const MOUNT_THROTTLE_MS = 260;
 const MOUNT_SETTLE_DELAY_MS = 120;
 
@@ -196,6 +199,32 @@ const clearOverlayTimers = () => {
   }
 };
 
+const scheduleHoverHide = (delayMs = HOVER_HIDE_DELAY_MS, clearSettleMount = false) => {
+  if (hoverHideTimer !== null) {
+    window.clearTimeout(hoverHideTimer);
+  }
+  if (clearSettleMount && hoverSettleMountTimer !== null) {
+    window.clearTimeout(hoverSettleMountTimer);
+    hoverSettleMountTimer = null;
+  }
+  hoverHideTimer = window.setTimeout(() => {
+    const activeVideo = getMainVideo();
+    if (!activeVideo || activeVideo.paused || activeVideo.ended) return;
+    setHelpPanelVisible(false);
+    hideEmotionTimeline();
+  }, delayMs);
+};
+
+const isTimelineHostTarget = (target: EventTarget | null): boolean => {
+  if (!target || !(target instanceof Node)) return false;
+  if (target instanceof HTMLElement && target.id === TIMELINE_HOST_ID) return true;
+  if (target instanceof Element && target.closest(`#${TIMELINE_HOST_ID}`)) return true;
+  const root = target.getRootNode?.();
+  return root instanceof ShadowRoot &&
+    root.host instanceof HTMLElement &&
+    root.host.id === TIMELINE_HOST_ID;
+};
+
 const requestTimelineMount = (force = false) => {
   const now = Date.now();
   if (!force && now - lastTimelineMountAt < MOUNT_THROTTLE_MS) return;
@@ -219,21 +248,17 @@ const showHoverTimeline = () => {
     requestTimelineMount(true);
   }, MOUNT_SETTLE_DELAY_MS);
 
-  if (hoverHideTimer !== null) window.clearTimeout(hoverHideTimer);
-  hoverHideTimer = window.setTimeout(() => {
-    const activeVideo = getMainVideo();
-    if (!activeVideo || activeVideo.paused || activeVideo.ended) return;
-    setHelpPanelVisible(false);
-    hideEmotionTimeline();
-  }, HOVER_HIDE_DELAY_MS);
+  scheduleHoverHide(HOVER_HIDE_DELAY_MS);
 };
 
-const hideHoverTimeline = () => {
+const hideHoverTimeline = (evt?: MouseEvent) => {
   const video = getMainVideo();
   if (!video || video.paused || video.ended) return;
-  clearOverlayTimers();
-  setHelpPanelVisible(false);
-  hideEmotionTimeline();
+  if (evt?.relatedTarget && isTimelineHostTarget(evt.relatedTarget)) {
+    scheduleHoverHide(HOVER_HIDE_DELAY_MS);
+    return;
+  }
+  scheduleHoverHide(QUICK_HIDE_DELAY_MS, true);
 };
 
 const bindHoverReveal = () => {
@@ -242,7 +267,21 @@ const bindHoverReveal = () => {
   hoverContainer = container;
   container.addEventListener("mousemove", showHoverTimeline, { passive: true });
   container.addEventListener("mouseenter", showHoverTimeline, { passive: true });
-  container.addEventListener("mouseleave", hideHoverTimeline);
+  container.addEventListener("mouseleave", (evt) => hideHoverTimeline(evt));
+
+  if (hoverGlobalBound) return;
+  hoverGlobalBound = true;
+  document.addEventListener(
+    "mousemove",
+    (evt) => {
+      if (!isWatchPage()) return;
+      const overTimeline = evt.composedPath().some(
+        (node) => node instanceof HTMLElement && node.id === TIMELINE_HOST_ID
+      );
+      if (overTimeline) showHoverTimeline();
+    },
+    { passive: true }
+  );
 };
 
 const getActiveTitleId = (): string | null => {
