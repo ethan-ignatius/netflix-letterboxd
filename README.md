@@ -3,13 +3,15 @@
 ## Overview
 Netflix + Letterboxd is a Manifest V3 Chrome extension that overlays Letterboxd-informed insights on Netflix expanded title cards, captures live viewer reactions during playback, and visualizes those reactions as an emotional timeline above the scrubber. It uses a Letterboxd export ZIP for local personalization and TMDb for community ratings.
 
-## Preview
+## Previews
 
 <p align="center">
   <img src="./docs/images/reaction-graph-preview.png" width="750" />
   <br />
   <em>Reaction graph rendered over timeline.</em>
 </p>
+
+--------------------------------------------------------------------------------------------------------------------------------------------
 
 <p align="center">
   <img src="./docs/images/overlay-preview.png" width="750" />
