@@ -63,7 +63,7 @@ See `docs/ARCHITECTURE.md` for full details.
   - negative alignment pushes it lower
 - Show top positive genres as the “Because you like” explanation.
 
-### Backend proxy (recommended for “users don’t need keys”)
+### Backend proxy
 
 1. Deploy the Node server in `server/` (e.g. Fly.io, Railway, Render). Set env: `TMDB_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (default `us-east-1`).
 2. Build the extension with your backend URL:  
