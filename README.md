@@ -6,6 +6,12 @@ Netflix + Letterboxd is a Manifest V3 Chrome extension that overlays Letterboxd-
 ## Preview
 
 <p align="center">
+  <img src="./docs/images/reaction-graph-preview.png" width="750" />
+  <br />
+  <em>Reaction graph rendered over timeline.</em>
+</p>
+
+<p align="center">
   <img src="./docs/images/overlay-preview.png" width="750" />
   <br />
   <em>Overlay with TMDb community rating and Letterboxd-powered match insights.</em>
